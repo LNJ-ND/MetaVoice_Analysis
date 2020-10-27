@@ -1,0 +1,105 @@
+---
+title: "Preprocessing"
+author: "Nicole"
+date: "27/10/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Install packages and load data 
+```{r}
+# packages
+library(pacman)
+p_load(tidyverse,gdata,metafor,lmerTest)
+
+# data (from shinyapps/sitedata)
+scz <- read_csv("rawdata/schizophrenia_parola_2020.csv")
+asd <- read_csv("rawdata/asd_fusaroli_2017.csv")
+lhd <- read_csv("rawdata/lhd_weed_2020.csv")
+rhd <- read_csv("rawdata/rhd_weed_2020.csv")
+
+```
+
+Merging the data
+```{r}
+# merging
+merge <- combine(scz, asd, lhd, rhd) 
+
+# re-oder columns and rename
+data <- merge[,c(64,1:63)] %>%
+  rename(disorder = source) %>%
+  mutate(same_sample =  paste0(same_sample, "_", disorder),
+         mean_age_1_years = ifelse(disorder == "asd", mean_age_1/12, mean_age_1),
+         mean_age_2_years = ifelse(disorder == "asd", mean_age_2/12, mean_age_2))
+
+```
+
+First look at the missing data: we have already taken out all of the NA's in x_1, x_2, SD_1 and SD_2
+Summary statistics: then count the participants and recordings by diagnosis, report their gender, age
+```{r}
+# number of studies and unique experiments
+study_summary <- data %>% 
+  group_by(disorder) %>% 
+  summarise(n_studies = n_distinct(study_ID),
+            n_unique_expt = n_distinct(expt_unique), 
+            n_samples = n_distinct(same_sample),
+            .groups = "drop_last")
+
+study_summary
+
+# calculate participant summary statistics
+# first make a data set that only has one row for unique samples
+distinct_sample <- distinct(data, same_sample, .keep_all = T)
+
+# then summarize
+sample_summary <- distinct_sample %>% 
+  group_by(disorder) %>% 
+  summarise(n_unique_samples = n(),
+            n_1 = sum(n_1),
+            n_2 = sum(n_2),
+            female_n_1 = sum(n_1_F, na.rm = T),
+            male_n_2 = sum(n_1_M, na.rm = T),
+            m_age_1 = mean(mean_age_1_years, na.rm = T),
+            m_age_2 = mean(mean_age_2_years, na.rm = T),
+            sd_age_1 = sd(mean_age_1_years, na.rm = T),
+            sd_age_2 = sd(mean_age_2_years, na.rm = T),
+            min_age_1 = min(mean_age_1_years, na.rm = T),
+            min_age_2 = min(mean_age_2_years, na.rm = T),
+            max_age_1 = max(mean_age_1_years, na.rm = T),
+            max_age_2 = max(mean_age_2_years, na.rm = T),
+            langugaes = list(unique(native_language)),
+            .groups = "drop_last")
+
+sample_summary
+```
+
+Calculate effect size riccardo's way
+```{r}
+
+# Calculate standardized effect sizes, variance and standard errors
+
+DataPreprocessES <- function(d, feature = "pitch"){ #function(d,Name="pitch variability")
+  
+  # Calculate standardized effect sizes
+  d = escalc(
+    'SMD',
+    n1i = d$n_1, n2i = d$n_2,
+    m1i = d$x_1, m2i = d$x_2,
+    sd1i = d$SD_1, sd2i = d$SD_2,
+    data = d
+  )
+  
+  d$StandardError=summary(d)$sei
+  d = d %>% dplyr::rename(EffectSize=yi,Variance=vi)
+  
+  return(d)
+}
+
+data_calc <- DataPreprocessES(data)
+
+```
