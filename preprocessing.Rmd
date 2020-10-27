@@ -101,5 +101,6 @@ DataPreprocessES <- function(d, feature = "pitch"){ #function(d,Name="pitch vari
 }
 
 data_calc <- DataPreprocessES(data)
+write.csv(data_calc, "data_calc_27_10_2020.csv")
 
 ```
