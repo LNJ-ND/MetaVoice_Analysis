@@ -26,7 +26,6 @@ pacman::p_load(
 )
 ```
 
-
 Calculate effect size RF's way
 ```{r}
 # Calculate standardized effect sizes, variance and standard errors
@@ -54,13 +53,13 @@ ES_calc <- function(d, feature = "pitch"){ #function(d,Name="pitch variability")
 Reading data, adding important columns
 ```{r}
 # Reading data
-data <- read.csv("data/data_calc_05_11_2020.csv")
+df <- read.csv("data/data_calc_05_11_2020.csv")
 
 # Adding study_disorder
-data$study_disorder <- paste(data$study_ID, data$disorder, sep = "_")
+df$study_disorder <- paste(df$study_ID, df$disorder, sep = "_")
 
 # Adding mo_task_type (ordered factor with three levels)
-data$mo_task_type <- factor(data$task_type, order = T,
+df$mo_task_type <- factor(df$task_type, order = T,
                             levels = c("constrained production",
                                        "free monological production",
                                        "social interaction"))
@@ -111,6 +110,621 @@ possible_features$feature
 # pitch <- subset(data, feature == "pitch")
 # pitch_var <- subset(data, feature == "pitch_variability")
 ```
+
+Functions
+```{r}
+# subset for voice feature
+feature_subset <- function(dataset, feature_name) {
+  invisible(
+    subset(dataset, feature == feature_name) %>%
+    group_by(disorder) %>%
+    filter(n() >= 5))
+}
+
+# run models (can be used for prior and real model)
+brm_fit <- function(def_formula, data_subset, def_priors, sample_prior) {
+  if (sample_prior == "only"){
+    model <- brm(
+      formula = def_formula,
+      data = data_subset,
+      family = student(),
+      prior = def_priors,
+      sample_prior = "only",
+      seed = 28,
+      chains = 4,
+      cores = 6,
+      iter = 4000,
+      control = list(
+        max_treedepth = 20,
+        adapt_delta=0.98))
+  }
+  if (sample_prior == T) {
+    model <- brm(
+      formula = def_formula,
+      data = data_subset,
+      family = student(),
+      prior = def_priors,
+      sample_prior = T,
+      seed = 28,
+      chains = 4,
+      cores = 6,
+      iter = 4000,
+      control = list(
+        max_treedepth = 20,
+        adapt_delta=0.98))
+  }
+  return(model)
+}
+
+# complete function
+complete_brms <- function(data, feature, formula, priors, loo_criterion) {
+  
+  subset <- feature_subset(dataset = data, feature_name = feature) 
+  
+  prior_model <- brm_fit(def_formula = formula, data_subset = subset, def_priors = priors, sample_prior = "only")
+  
+  posterior_model <- brm_fit(def_formula = formula, data_subset = subset, def_priors = priors, sample_prior = T)
+  
+  pp_checks <- pp_check(prior_model, nsamples = 1000) + pp_check(posterior_model, nsamples = 1000)
+  
+  summary <- summary(posterior_model)
+  
+  mcmc_trace <- mcmc_trace(posterior_model) + theme_classic()
+  
+  mcmc_rank <- mcmc_rank_overlay(posterior_model) + theme_classic()
+  
+  if(loo_criterion == T){
+    posterior_model <- add_criterion(posterior_model, criterion = "loo", reloo = T, seed = TRUE)
+  }
+  
+  return_objects <- list("data" = subset,
+                         "feature" = feature,
+                         "prior_model" = prior_model,
+                         "posterior_model" = posterior_model,
+                         "pp_checks" = pp_checks, 
+                         "posterior_summary" = summary,
+                         "mcmc_trace" = mcmc_trace, 
+                         "mcmc_rank" = mcmc_rank
+                         )
+  return(return_objects)
+}
+```
+
+Defining inputs to function
+```{r}
+# Formulas
+f_disorder <- bf(g_calc|se(g_var_calc) ~ 0 + disorder + (1|gr(same_sample, by = disorder)) + (1|gr(study_disorder, by = disorder)))
+
+f_dis_task <- bf(g_calc|se(g_var_calc) ~ 0 + disorder + task_type + (1|gr(same_sample, by = disorder)) + (1|gr(study_disorder, by = disorder)))
+
+f_dis_motask <- bf(g_calc|se(g_var_calc) ~ 0 + disorder + mo(mo_task_type) + (1|gr(same_sample, by = disorder)) + (1|gr(study_disorder, by = disorder)))
+
+f_inter_task <- bf(g_calc|se(g_var_calc) ~ 0 + disorder + disorder : task_type + (1|gr(same_sample, by = disorder)) + (1|gr(study_disorder, by = disorder)))
+
+f_inter_motask <- bf(g_calc|se(g_var_calc) ~ 0 + disorder + disorder : mo(mo_task_type) + (1|gr(same_sample, by = disorder)) + (1|gr(study_disorder, by = disorder)))
+
+# Priors
+model_priors <- c(
+  prior(normal(0, 1.5), class = b)
+  #using default sd because we expect outliers
+  )
+```
+
+Running all five models, divided by feature
+```{r}
+# Pause duration
+brm_pd_disorder <- complete_brms(data = df, feature = "pause_duration", formula = f_disorder, priors = model_priors, loo_criterion = T)
+brm_pd_dis_task <- complete_brms(data = df, feature = "pause_duration", formula = f_dis_task, priors = model_priors, loo_criterion = T)
+brm_pd_dis_motask <- complete_brms(data = df, feature = "pause_duration", formula = f_dis_motask, priors = model_priors, loo_criterion = T)
+brm_pd_inter_task <- complete_brms(data = df, feature = "pause_duration", formula = f_inter_task, priors = model_priors, loo_criterion = T)
+brm_pd_inter_motask <- complete_brms(data = df, feature = "pause_duration", formula = f_inter_motask, priors = model_priors, loo_criterion = T)
+
+# Pitch
+brm_p_disorder <- complete_brms(data = df, feature = "pitch", formula = f_disorder, priors = model_priors, loo_criterion = T)
+brm_p_dis_task <- complete_brms(data = df, feature = "pitch", formula = f_dis_task, priors = model_priors, loo_criterion = T)
+brm_p_dis_motask <- complete_brms(data = df, feature = "pitch", formula = f_dis_motask, priors = model_priors, loo_criterion = T)
+brm_p_inter_task <- complete_brms(data = df, feature = "pitch", formula = f_inter_task, priors = model_priors, loo_criterion = T)
+brm_p_inter_motask <- complete_brms(data = df, feature = "pitch", formula = f_inter_motask, priors = model_priors, loo_criterion = T)
+
+# Pitch variability
+brm_pv_disorder <- complete_brms(data = df, feature = "pitch_variability", formula = f_disorder, priors = model_priors, loo_criterion = T)
+brm_pv_dis_task <- complete_brms(data = df, feature = "pitch_variability", formula = f_dis_task, priors = model_priors, loo_criterion = T)
+brm_pv_dis_motask <- complete_brms(data = df, feature = "pitch_variability", formula = f_dis_motask, priors = model_priors, loo_criterion = T)
+brm_pv_inter_task <- complete_brms(data = df, feature = "pitch_variability", formula = f_inter_task, priors = model_priors, loo_criterion = T)
+brm_pv_inter_motask <- complete_brms(data = df, feature = "pitch_variability", formula = f_inter_motask, priors = model_priors, loo_criterion = T)
+```
+
+#Quality checking
+Pause duration
+```{r}
+# brm_pd_disorder (~ 0 + disorder)
+brm_pd_disorder$posterior_summary # Rhat = 1.00, ESS > 1800
+brm_pd_disorder$pp_checks
+
+brm_pd_disorder$mcmc_trace
+brm_pd_disorder$mcmc_rank
+
+parnames(brm_pd_disorder$posterior_model)
+
+plot(hypothesis(brm_pd_disorder$posterior_model,"disorderlhd = 0"))
+plot(hypothesis(brm_pd_disorder$posterior_model,"disorderrhd = 0"))
+plot(hypothesis(brm_pd_disorder$posterior_model,"disorderscz = 0"))
+
+plot(hypothesis(brm_pd_disorder$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pd_disorder$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pd_disorder$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
+
+plot(hypothesis(brm_pd_disorder$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_disorder$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_disorder$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+
+
+# brm_pd_dis_task (~ 0 + disorder + task_type)
+brm_pd_dis_task$posterior_summary # Rhat = 1.00, ESS > 2600
+brm_pd_dis_task$pp_checks
+
+brm_pd_dis_task$mcmc_trace
+brm_pd_dis_task$mcmc_rank
+
+parnames(brm_pd_dis_task$posterior_model)
+
+plot(hypothesis(brm_pd_dis_task$posterior_model,"disorderlhd = 0"))
+plot(hypothesis(brm_pd_dis_task$posterior_model,"disorderrhd = 0"))
+plot(hypothesis(brm_pd_dis_task$posterior_model,"disorderscz = 0"))
+plot(hypothesis(brm_pd_dis_task$posterior_model,"task_typefreemonologicalproduction = 0")) # tight fit (only have free for scz)
+plot(hypothesis(brm_pd_dis_task$posterior_model,"task_typesocialinteraction = 0"))
+
+plot(hypothesis(brm_pd_dis_task$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pd_dis_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pd_dis_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
+
+plot(hypothesis(brm_pd_dis_task$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_dis_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_dis_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+
+plot(hypothesis(brm_pd_dis_task$posterior_model, "nu = 0", class = ""))
+
+
+# brm_pd_dis_motask (~ 0 + disorder + mo_task_type)
+brm_pd_dis_motask$posterior_summary # Rhat = 1.00, ESS > 2400
+brm_pd_dis_motask$pp_checks
+
+brm_pd_dis_motask$mcmc_trace
+brm_pd_dis_motask$mcmc_rank
+
+parnames(brm_pd_dis_motask$posterior_model)
+
+plot(hypothesis(brm_pd_dis_motask$posterior_model,"disorderlhd = 0"))
+plot(hypothesis(brm_pd_dis_motask$posterior_model,"disorderrhd = 0"))
+plot(hypothesis(brm_pd_dis_motask$posterior_model,"disorderscz = 0"))
+
+plot(hypothesis(brm_pd_dis_motask$posterior_model,"momo_task_type = 0", class = "bsp"))
+
+plot(hypothesis(brm_pd_dis_motask$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pd_dis_motask$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pd_dis_motask$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pd_dis_motask$posterior_model, "mo_task_type = 0", class = "sd", group = "study_disorder"))
+
+plot(hypothesis(brm_pd_dis_motask$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_dis_motask$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_dis_motask$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_dis_motask$posterior_model, "mo_task_type = 0", class = "sd", group = "same_sample"))
+
+plot(hypothesis(brm_pd_dis_motask$posterior_model, "nu = 0", class = ""))
+
+plot(hypothesis(brm_pd_dis_motask$posterior_model, "momo_task_type1[1] = 0", class = "simo"))
+plot(hypothesis(brm_pd_dis_motask$posterior_model, "momo_task_type1[2] = 0", class = "simo"))
+
+
+# brm_pd_inter_task (~ 0 + disorder + disorder : mo_task_type)
+brm_pd_inter_task$posterior_summary
+brm_pd_inter_task$pp_checks
+
+brm_pd_inter_task$mcmc_trace
+brm_pd_inter_task$mcmc_rank
+
+parnames(brm_pd_inter_task$posterior_model)
+
+plot(hypothesis(brm_pd_inter_task$posterior_model,"disorderlhd = 0"))
+plot(hypothesis(brm_pd_inter_task$posterior_model,"disorderrhd = 0"))
+plot(hypothesis(brm_pd_inter_task$posterior_model,"disorderscz = 0"))
+plot(hypothesis(brm_pd_inter_task$posterior_model,"disorderlhd:task_typefreemonologicalproduction = 0")) #tight fit (not in data)
+plot(hypothesis(brm_pd_inter_task$posterior_model,"disorderlhd:task_typesocialinteraction = 0")) #tight fit (not in data)
+plot(hypothesis(brm_pd_inter_task$posterior_model,"disorderrhd:task_typefreemonologicalproduction = 0")) #tight fit (not in data)
+plot(hypothesis(brm_pd_inter_task$posterior_model,"disorderrhd:task_typesocialinteraction = 0")) #tight fit (not in data)
+plot(hypothesis(brm_pd_inter_task$posterior_model,"disorderscz:task_typefreemonologicalproduction = 0")) #tight fit (is in data)
+plot(hypothesis(brm_pd_inter_task$posterior_model,"disorderscz:task_typesocialinteraction = 0"))
+
+plot(hypothesis(brm_pd_inter_task$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pd_inter_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pd_inter_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
+
+plot(hypothesis(brm_pd_inter_task$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_inter_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_inter_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+
+plot(hypothesis(brm_pd_inter_task$posterior_model, "nu = 0", class = "")) # tight fit
+
+
+# brm_pd_inter_motask (~ 0 + disorder + disorder : task_type)
+brm_pd_inter_motask$posterior_summary
+brm_pd_inter_motask$pp_checks
+
+brm_pd_inter_motask$mcmc_trace
+brm_pd_inter_motask$mcmc_rank
+
+parnames(brm_pd_inter_motask$posterior_model)
+
+plot(hypothesis(brm_pd_inter_motask$posterior_model,"disorderlhd = 0"))
+plot(hypothesis(brm_pd_inter_motask$posterior_model,"disorderrhd = 0"))
+plot(hypothesis(brm_pd_inter_motask$posterior_model,"disorderscz = 0"))
+
+plot(hypothesis(brm_pd_inter_motask$posterior_model,"disorderlhd:momo_task_type = 0", class = "bsp")) # tight fit (only has 1 task type in data)
+plot(hypothesis(brm_pd_inter_motask$posterior_model,"disorderrhd:momo_task_type = 0", class = "bsp")) # tight fit (only has 1 task type in data)
+plot(hypothesis(brm_pd_inter_motask$posterior_model,"disorderscz:momo_task_type = 0", class = "bsp"))
+
+plot(hypothesis(brm_pd_inter_motask$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pd_inter_motask$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pd_inter_motask$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
+
+plot(hypothesis(brm_pd_inter_motask$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_inter_motask$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_inter_motask$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+
+plot(hypothesis(brm_pd_inter_motask$posterior_model, "nu = 0", class = "")) # tight fit
+
+plot(hypothesis(brm_pd_inter_motask$posterior_model, "disorderlhd:momo_task_type1[1] = 0", class = "simo"))
+plot(hypothesis(brm_pd_inter_motask$posterior_model, "disorderlhd:momo_task_type1[2] = 0", class = "simo"))
+plot(hypothesis(brm_pd_inter_motask$posterior_model, "disorderrhd:momo_task_type1[1] = 0", class = "simo"))
+plot(hypothesis(brm_pd_inter_motask$posterior_model, "disorderrhd:momo_task_type1[2] = 0", class = "simo"))
+plot(hypothesis(brm_pd_inter_motask$posterior_model, "disorderscz:momo_task_type1[1] = 0", class = "simo"))
+plot(hypothesis(brm_pd_inter_motask$posterior_model, "disorderscz:momo_task_type1[2] = 0", class = "simo"))
+```
+
+Pitch
+```{r}
+# brm_p_disorder (~ 0 + disorder)
+brm_p_disorder$posterior_summary # Rhat = 1.00, ESS > 1800
+brm_p_disorder$pp_checks
+
+brm_p_disorder$mcmc_trace
+brm_p_disorder$mcmc_rank
+
+parnames(brm_p_disorder$posterior_model)
+
+plot(hypothesis(brm_p_disorder$posterior_model,"disorderasd = 0"))
+plot(hypothesis(brm_p_disorder$posterior_model,"disorderrhd = 0"))
+plot(hypothesis(brm_p_disorder$posterior_model,"disorderscz = 0"))
+
+plot(hypothesis(brm_p_disorder$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_p_disorder$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_p_disorder$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
+
+plot(hypothesis(brm_p_disorder$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_p_disorder$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_p_disorder$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+
+
+# brm_p_dis_task (~ 0 + disorder + task_type)
+brm_p_dis_task$posterior_summary # Rhat = 1.00, ESS > 2600
+brm_p_dis_task$pp_checks
+
+brm_p_dis_task$mcmc_trace
+brm_p_dis_task$mcmc_rank
+
+parnames(brm_p_dis_task$posterior_model)
+
+plot(hypothesis(brm_p_dis_task$posterior_model,"disorderasd = 0"))
+plot(hypothesis(brm_p_dis_task$posterior_model,"disorderrhd = 0"))
+plot(hypothesis(brm_p_dis_task$posterior_model,"disorderscz = 0"))
+plot(hypothesis(brm_p_dis_task$posterior_model,"task_typefreemonologicalproduction = 0"))
+plot(hypothesis(brm_p_dis_task$posterior_model,"task_typesocialinteraction = 0"))
+
+plot(hypothesis(brm_p_dis_task$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_p_dis_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_p_dis_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
+
+plot(hypothesis(brm_p_dis_task$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_p_dis_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_p_dis_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+
+plot(hypothesis(brm_p_dis_task$posterior_model, "nu = 0", class = ""))
+
+
+# brm_p_dis_motask (~ 0 + disorder + mo_task_type)
+brm_p_dis_motask$posterior_summary # Rhat = 1.00, ESS > 2400
+brm_p_dis_motask$pp_checks
+
+brm_p_dis_motask$mcmc_trace
+brm_p_dis_motask$mcmc_rank
+
+parnames(brm_p_dis_motask$posterior_model)
+
+plot(hypothesis(brm_p_dis_motask$posterior_model,"disorderasd = 0"))
+plot(hypothesis(brm_p_dis_motask$posterior_model,"disorderrhd = 0"))
+plot(hypothesis(brm_p_dis_motask$posterior_model,"disorderscz = 0"))
+
+plot(hypothesis(brm_p_dis_motask$posterior_model,"momo_task_type = 0", class = "bsp"))
+
+plot(hypothesis(brm_p_dis_motask$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_p_dis_motask$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_p_dis_motask$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_p_dis_motask$posterior_model, "mo_task_type = 0", class = "sd", group = "study_disorder"))
+
+plot(hypothesis(brm_p_dis_motask$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_p_dis_motask$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_p_dis_motask$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_p_dis_motask$posterior_model, "mo_task_type = 0", class = "sd", group = "same_sample"))
+
+plot(hypothesis(brm_p_dis_motask$posterior_model, "nu = 0", class = ""))
+
+plot(hypothesis(brm_p_dis_motask$posterior_model, "momo_task_type1[1] = 0", class = "simo"))
+plot(hypothesis(brm_p_dis_motask$posterior_model, "momo_task_type1[2] = 0", class = "simo"))
+
+
+# brm_p_inter_task (~ 0 + disorder + disorder : mo_task_type)
+brm_p_inter_task$posterior_summary
+brm_p_inter_task$pp_checks
+
+brm_p_inter_task$mcmc_trace
+brm_p_inter_task$mcmc_rank
+
+parnames(brm_p_inter_task$posterior_model)
+
+plot(hypothesis(brm_p_inter_task$posterior_model,"disorderasd = 0"))
+plot(hypothesis(brm_p_inter_task$posterior_model,"disorderrhd = 0"))
+plot(hypothesis(brm_p_inter_task$posterior_model,"disorderscz = 0"))
+plot(hypothesis(brm_p_inter_task$posterior_model,"disorderasd:task_typefreemonologicalproduction = 0"))
+plot(hypothesis(brm_p_inter_task$posterior_model,"disorderasd:task_typesocialinteraction = 0"))
+plot(hypothesis(brm_p_inter_task$posterior_model,"disorderrhd:task_typefreemonologicalproduction = 0"))
+plot(hypothesis(brm_p_inter_task$posterior_model,"disorderrhd:task_typesocialinteraction = 0"))
+plot(hypothesis(brm_p_inter_task$posterior_model,"disorderscz:task_typefreemonologicalproduction = 0"))
+plot(hypothesis(brm_p_inter_task$posterior_model,"disorderscz:task_typesocialinteraction = 0"))
+
+plot(hypothesis(brm_p_inter_task$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_p_inter_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_p_inter_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
+
+plot(hypothesis(brm_p_inter_task$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_p_inter_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_p_inter_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+
+plot(hypothesis(brm_p_inter_task$posterior_model, "nu = 0", class = ""))
+
+
+# brm_p_inter_motask (~ 0 + disorder + disorder : task_type)
+brm_p_inter_motask$posterior_summary
+brm_p_inter_motask$pp_checks
+
+brm_p_inter_motask$mcmc_trace
+brm_p_inter_motask$mcmc_rank
+
+parnames(brm_p_inter_motask$posterior_model)
+
+plot(hypothesis(brm_p_inter_motask$posterior_model,"disorderasd = 0"))
+plot(hypothesis(brm_p_inter_motask$posterior_model,"disorderrhd = 0"))
+plot(hypothesis(brm_p_inter_motask$posterior_model,"disorderscz = 0"))
+
+plot(hypothesis(brm_p_inter_motask$posterior_model,"disorderasd:momo_task_type = 0", class = "bsp"))
+plot(hypothesis(brm_p_inter_motask$posterior_model,"disorderrhd:momo_task_type = 0", class = "bsp"))
+plot(hypothesis(brm_p_inter_motask$posterior_model,"disorderscz:momo_task_type = 0", class = "bsp"))
+
+plot(hypothesis(brm_p_inter_motask$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_p_inter_motask$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_p_inter_motask$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
+
+plot(hypothesis(brm_p_inter_motask$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_p_inter_motask$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_p_inter_motask$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+
+plot(hypothesis(brm_p_inter_motask$posterior_model, "nu = 0", class = ""))
+
+plot(hypothesis(brm_p_inter_motask$posterior_model, "disorderasd:momo_task_type1[1] = 0", class = "simo"))
+plot(hypothesis(brm_p_inter_motask$posterior_model, "disorderasd:momo_task_type1[2] = 0", class = "simo"))
+plot(hypothesis(brm_p_inter_motask$posterior_model, "disorderrhd:momo_task_type1[1] = 0", class = "simo"))
+plot(hypothesis(brm_p_inter_motask$posterior_model, "disorderrhd:momo_task_type1[2] = 0", class = "simo"))
+plot(hypothesis(brm_p_inter_motask$posterior_model, "disorderscz:momo_task_type1[1] = 0", class = "simo"))
+plot(hypothesis(brm_p_inter_motask$posterior_model, "disorderscz:momo_task_type1[2] = 0", class = "simo"))
+```
+
+Pitch variability
+```{r}
+# brm_pv_disorder (~ 0 + disorder)
+brm_pv_disorder$posterior_summary # Rhat = 1.00, ESS > 1800
+brm_pv_disorder$pp_checks
+
+brm_pv_disorder$mcmc_trace
+brm_pv_disorder$mcmc_rank
+
+parnames(brm_pv_disorder$posterior_model)
+
+plot(hypothesis(brm_pv_disorder$posterior_model,"disorderasd = 0"))
+plot(hypothesis(brm_pv_disorder$posterior_model,"disorderlhd = 0"))
+plot(hypothesis(brm_pv_disorder$posterior_model,"disorderrhd = 0"))
+plot(hypothesis(brm_pv_disorder$posterior_model,"disorderscz = 0"))
+
+plot(hypothesis(brm_pv_disorder$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pv_disorder$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pv_disorder$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pv_disorder$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
+
+plot(hypothesis(brm_pv_disorder$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_disorder$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_disorder$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_disorder$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+
+
+# brm_pv_dis_task (~ 0 + disorder + task_type)
+brm_pv_dis_task$posterior_summary # Rhat = 1.00, ESS > 2600
+brm_pv_dis_task$pp_checks
+
+brm_pv_dis_task$mcmc_trace
+brm_pv_dis_task$mcmc_rank
+
+parnames(brm_pv_dis_task$posterior_model)
+
+plot(hypothesis(brm_pv_dis_task$posterior_model,"disorderasd = 0"))
+plot(hypothesis(brm_pv_dis_task$posterior_model,"disorderlhd = 0"))
+plot(hypothesis(brm_pv_dis_task$posterior_model,"disorderrhd = 0"))
+plot(hypothesis(brm_pv_dis_task$posterior_model,"disorderscz = 0"))
+plot(hypothesis(brm_pv_dis_task$posterior_model,"task_typefreemonologicalproduction = 0"))
+plot(hypothesis(brm_pv_dis_task$posterior_model,"task_typesocialinteraction = 0"))
+
+plot(hypothesis(brm_pv_dis_task$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pv_dis_task$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pv_dis_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pv_dis_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
+
+plot(hypothesis(brm_pv_dis_task$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_dis_task$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_dis_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_dis_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+
+plot(hypothesis(brm_pv_dis_task$posterior_model, "nu = 0", class = ""))
+
+
+# brm_pv_dis_motask (~ 0 + disorder + mo_task_type)
+brm_pv_dis_motask$posterior_summary # Rhat = 1.00, ESS > 2400
+brm_pv_dis_motask$pp_checks
+
+brm_pv_dis_motask$mcmc_trace
+brm_pv_dis_motask$mcmc_rank
+
+parnames(brm_pv_dis_motask$posterior_model)
+
+plot(hypothesis(brm_pv_dis_motask$posterior_model,"disorderasd = 0"))
+plot(hypothesis(brm_pv_dis_motask$posterior_model,"disorderlhd = 0"))
+plot(hypothesis(brm_pv_dis_motask$posterior_model,"disorderrhd = 0"))
+plot(hypothesis(brm_pv_dis_motask$posterior_model,"disorderscz = 0"))
+
+plot(hypothesis(brm_pv_dis_motask$posterior_model,"momo_task_type = 0", class = "bsp"))
+
+plot(hypothesis(brm_pv_dis_motask$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pv_dis_motask$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pv_dis_motask$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pv_dis_motask$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pv_dis_motask$posterior_model, "mo_task_type = 0", class = "sd", group = "study_disorder"))
+
+plot(hypothesis(brm_pv_dis_motask$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_dis_motask$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_dis_motask$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_dis_motask$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_dis_motask$posterior_model, "mo_task_type = 0", class = "sd", group = "same_sample"))
+
+plot(hypothesis(brm_pv_dis_motask$posterior_model, "nu = 0", class = ""))
+
+plot(hypothesis(brm_pv_dis_motask$posterior_model, "momo_task_type1[1] = 0", class = "simo"))
+plot(hypothesis(brm_pv_dis_motask$posterior_model, "momo_task_type1[2] = 0", class = "simo"))
+
+
+# brm_pv_inter_task (~ 0 + disorder + disorder : mo_task_type)
+brm_pv_inter_task$posterior_summary
+brm_pv_inter_task$pp_checks
+
+brm_pv_inter_task$mcmc_trace
+brm_pv_inter_task$mcmc_rank
+
+parnames(brm_pv_inter_task$posterior_model)
+
+plot(hypothesis(brm_pv_inter_task$posterior_model,"disorderasd = 0"))
+plot(hypothesis(brm_pv_inter_task$posterior_model,"disorderlhd = 0"))
+plot(hypothesis(brm_pv_inter_task$posterior_model,"disorderrhd = 0"))
+plot(hypothesis(brm_pv_inter_task$posterior_model,"disorderscz = 0"))
+plot(hypothesis(brm_pv_inter_task$posterior_model,"disorderasd:task_typefreemonologicalproduction = 0"))
+plot(hypothesis(brm_pv_inter_task$posterior_model,"disorderasd:task_typesocialinteraction = 0"))
+plot(hypothesis(brm_pv_inter_task$posterior_model,"disorderlhd:task_typefreemonologicalproduction = 0"))
+plot(hypothesis(brm_pv_inter_task$posterior_model,"disorderlhd:task_typesocialinteraction = 0"))
+plot(hypothesis(brm_pv_inter_task$posterior_model,"disorderrhd:task_typefreemonologicalproduction = 0"))
+plot(hypothesis(brm_pv_inter_task$posterior_model,"disorderrhd:task_typesocialinteraction = 0"))
+plot(hypothesis(brm_pv_inter_task$posterior_model,"disorderscz:task_typefreemonologicalproduction = 0"))
+plot(hypothesis(brm_pv_inter_task$posterior_model,"disorderscz:task_typesocialinteraction = 0"))
+
+plot(hypothesis(brm_pv_inter_task$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pv_inter_task$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pv_inter_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pv_inter_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
+
+plot(hypothesis(brm_pv_inter_task$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_inter_task$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_inter_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_inter_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+
+plot(hypothesis(brm_pv_inter_task$posterior_model, "nu = 0", class = ""))
+
+
+# brm_pv_inter_motask (~ 0 + disorder + disorder : task_type)
+brm_pv_inter_motask$posterior_summary
+brm_pv_inter_motask$pp_checks
+
+brm_pv_inter_motask$mcmc_trace
+brm_pv_inter_motask$mcmc_rank
+
+parnames(brm_pv_inter_motask$posterior_model)
+
+plot(hypothesis(brm_pv_inter_motask$posterior_model,"disorderasd = 0"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model,"disorderlhd = 0"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model,"disorderrhd = 0"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model,"disorderscz = 0"))
+
+plot(hypothesis(brm_pv_inter_motask$posterior_model,"disorderasd:momo_task_type = 0", class = "bsp"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model,"disorderlhd:momo_task_type = 0", class = "bsp"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model,"disorderrhd:momo_task_type = 0", class = "bsp"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model,"disorderscz:momo_task_type = 0", class = "bsp"))
+
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
+
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "nu = 0", class = ""))
+
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "disorderasd:momo_task_type1[1] = 0", class = "simo"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "disorderasd:momo_task_type1[2] = 0", class = "simo"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "disorderlhd:momo_task_type1[1] = 0", class = "simo"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "disorderlhd:momo_task_type1[2] = 0", class = "simo"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "disorderrhd:momo_task_type1[1] = 0", class = "simo"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "disorderrhd:momo_task_type1[2] = 0", class = "simo"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "disorderscz:momo_task_type1[1] = 0", class = "simo"))
+plot(hypothesis(brm_pv_inter_motask$posterior_model, "disorderscz:momo_task_type1[2] = 0", class = "simo"))
+```
+
+# Model comparison
+```{r}
+# Pause duration
+# Comparing loo
+loo_compare(brm_pd_disorder$posterior_model, brm_pd_dis_task$posterior_model, brm_pd_dis_motask$posterior_model, brm_pd_inter_task$posterior_model, brm_pd_inter_motask$posterior_model)
+
+# Model weights
+loo_model_weights(brm_pd_disorder$posterior_model, brm_pd_dis_task$posterior_model, brm_pd_dis_motask$posterior_model, brm_pd_inter_task$posterior_model, brm_pd_inter_motask$posterior_model)
+
+# Pitch
+# Comparing loo
+loo_compare(brm_p_disorder$posterior_model, brm_p_dis_task$posterior_model, brm_p_dis_motask$posterior_model, brm_p_inter_task$posterior_model, brm_p_inter_motask$posterior_model)
+
+# Model weights
+loo_model_weights(brm_p_disorder$posterior_model, brm_p_dis_task$posterior_model, brm_p_dis_motask$posterior_model, brm_p_inter_task$posterior_model, brm_p_inter_motask$posterior_model)
+
+# Pitch variability
+# Comparing loo
+loo_compare(brm_pv_disorder$posterior_model, brm_pv_dis_task$posterior_model, brm_pv_dis_motask$posterior_model, brm_pv_inter_task$posterior_model, brm_pv_inter_motask$posterior_model)
+
+# Model weights
+loo_model_weights(brm_pv_disorder$posterior_model, brm_pv_dis_task$posterior_model, brm_pv_dis_motask$posterior_model, brm_pv_inter_task$posterior_model, brm_pv_inter_motask$posterior_model)
+```
+
+
+
+
+
+
+
+
+
 
 
 ### Analysis on single features
