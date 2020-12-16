@@ -57,7 +57,8 @@ data$expt_unique_dis <- paste(data$expt_unique, data$disorder, sep = "_")
 Save file
 ```{r}
 
-write.csv(data, "data/finaldata_18_11_2020.csv")
+# change name when you save it again, finaldata_18_11_2020.csv is the one we use for the analysis.
+#write.csv(data, "data/finaldata_18_11_2020.csv") 
 predata <- read_csv("data/finaldata_18_11_2020.csv") 
 
 ```
@@ -93,21 +94,19 @@ study_summary <- data %>%
             n_samples = n_distinct(same_sample),
             n_row = n(),
             .groups = "drop_last")
+study_summary
 
 # languages
 levels(as.factor(predata$native_language))
 
-#
+# test <- data %>% group_by(disorder, short_cite) %>%
+#   summarise(n = n()) %>%
+#   group_by(short_cite) %>%
+#   summarise(n = n(), dis = list(disorder), dis2 = disorder)
 
+#############
 
-test <- data %>% group_by(disorder, short_cite) %>%
-  summarise(n = n()) %>%
-  group_by(short_cite) %>%
-  summarise(n = n(), dis = list(disorder), dis2 = disorder)
-
-study_summary
-
-# calculate participant summary statistics
+#  participant summary statistics
 # first make a data set that only has one row for unique samples
 participant_sample <- data %>% group_by(same_sample, disorder) %>%
   summarise(n_1 = as.integer(mean(n_1)),
@@ -124,30 +123,24 @@ participants <- participant_sample %>%
 participants
             
           
-
-
-test2 <- filter(test, disorder == "rhd" | disorder == "lhd")
-View(test2)
-
-
-# then summarize
-sample_summary <- distinct_sample %>% 
-  group_by(short_cite, disorder) %>% 
-  summarise(n_unique_samples = n(),
-            n_1 = sum(n_1),
-            n_2 = sum(n_2),
-            female_n_1 = sum(n_1_F, na.rm = T),
-            male_n_2 = sum(n_1_M, na.rm = T),
-            m_age_1 = mean(mean_age_1_years, na.rm = T),
-            m_age_2 = mean(mean_age_2_years, na.rm = T),
-            sd_age_1 = sd(mean_age_1_years, na.rm = T),
-            sd_age_2 = sd(mean_age_2_years, na.rm = T),
-            min_age_1 = min(mean_age_1_years, na.rm = T),
-            min_age_2 = min(mean_age_2_years, na.rm = T),
-            max_age_1 = max(mean_age_1_years, na.rm = T),
-            max_age_2 = max(mean_age_2_years, na.rm = T),
-            langugaes = list(unique(native_language)),
-            .groups = "drop_last")
-
-sample_summary
+# # then summarize
+# sample_summary <- distinct_sample %>% 
+#   group_by(short_cite, disorder) %>% 
+#   summarise(n_unique_samples = n(),
+#             n_1 = sum(n_1),
+#             n_2 = sum(n_2),
+#             female_n_1 = sum(n_1_F, na.rm = T),
+#             male_n_2 = sum(n_1_M, na.rm = T),
+#             m_age_1 = mean(mean_age_1_years, na.rm = T),
+#             m_age_2 = mean(mean_age_2_years, na.rm = T),
+#             sd_age_1 = sd(mean_age_1_years, na.rm = T),
+#             sd_age_2 = sd(mean_age_2_years, na.rm = T),
+#             min_age_1 = min(mean_age_1_years, na.rm = T),
+#             min_age_2 = min(mean_age_2_years, na.rm = T),
+#             max_age_1 = max(mean_age_1_years, na.rm = T),
+#             max_age_2 = max(mean_age_2_years, na.rm = T),
+#             langugaes = list(unique(native_language)),
+#             .groups = "drop_last")
+# 
+# sample_summary
 ```
