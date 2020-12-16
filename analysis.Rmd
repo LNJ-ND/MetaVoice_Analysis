@@ -26,52 +26,13 @@ pacman::p_load(
 )
 ```
 
-Calculate effect size RF's way
-```{r}
-# Calculate standardized effect sizes, variance and standard errors
-
-ES_calc <- function(d, feature = "pitch"){ #function(d,Name="pitch variability")
-  
-  # Calculate standardized effect sizes
-  d = escalc(
-    'SMD',
-    n1i = d$n_1, n2i = d$n_2,
-    m1i = d$x_1, m2i = d$x_2,
-    sd1i = d$SD_1, sd2i = d$SD_2,
-    data = d
-  )
-  
-  d$StandardError=summary(d)$sei
-  d = d %>% dplyr::rename(EffectSize=yi,Variance=vi)
-  
-  return(d)
-}
-
-### Exploring Data
-```
-
 Reading data, adding important columns
 ```{r}
 # Reading data
-df <- read.csv("data/data_calc_16_11_2020.csv")
+df <- read.csv("data/data_18_11_2020.csv")
 
-# Adding study_disorder
-df$study_disorder <- paste(df$study_ID, df$disorder, sep = "_")
-
-# Adding expt_unique_dis
-df$expt_unique_dis <- paste(df$expt_unique, df$disorder, sep = "_")
-
-# Adding mo_task_type (ordered factor with three levels)
-df$mo_task_type <- factor(df$task_type, order = T,
-                            levels = c("constrained production",
-                                       "free monological production",
-                                       "social interaction"))
-
-df$native_language <- as.factor(df$native_language)
-str(df$native_language)
-
-df$dis_task <- paste(df$disorder, df$task_type)
-df$dis_lang <- paste(df$disorder, df$native_language)
+# remove empty column
+data$X1 <- NULL
 
 # Summary statistics (could be used on website as priors if brms, but here we want it by the subsetted feature)
 # mean(data$EffectSize)
@@ -166,7 +127,7 @@ brm_fit <- function(def_formula, data_subset, def_priors, sample_prior) {
 }
 
 # complete function
-complete_brms <- function(data, feature, formula, priors, criterion) {
+complete_brms <- function(data, feature, formula, priors, loo_criterion) {
   
   subset <- feature_subset(dataset = data, feature_name = feature) 
   
@@ -175,6 +136,7 @@ complete_brms <- function(data, feature, formula, priors, criterion) {
   #   n_lang_df <- subset %>% group_by(native_language) %>% summarize(n_lang = n(), .groups = "drop_last")
   #   subset <- merge(subset, n_lang_df, by = "native_language")
   #   subset$native_language[subset$n_lang == 1] <- "Other"
+  #   subset$dis_lang[subset$n_lang == 1] <- "Other"
   # }
   
   prior_model <- brm_fit(def_formula = formula, data_subset = subset, def_priors = priors, sample_prior = "only")
@@ -186,11 +148,13 @@ complete_brms <- function(data, feature, formula, priors, criterion) {
   summary <- summary(posterior_model)
   
   mcmc_trace <- mcmc_trace(posterior_model) + theme_classic()
+  #mcmc_trace <- mcmc_trace(posterior_model, pars = c("^b_", "^sd_")) + theme_classic()
   
   mcmc_rank <- mcmc_rank_overlay(posterior_model) + theme_classic()
+  #mcmc_rank <- mcmc_rank_overlay(posterior_model, pars = c("^b_", "^sd_")) + theme_classic()
   
-  if(criterion == T){
-    kf <- brms::kfold(posterior_model, K = 5, chains = 1)
+  if(loo_criterion == T){
+    posterior_model <- add_criterion(posterior_model, criterion = "loo", reloo = T, seed = TRUE)
   }
   
   return_objects <- list("data" = subset,
@@ -200,8 +164,7 @@ complete_brms <- function(data, feature, formula, priors, criterion) {
                          "pp_checks" = pp_checks, 
                          "posterior_summary" = summary,
                          "mcmc_trace" = mcmc_trace, 
-                         "mcmc_rank" = mcmc_rank,
-                         "kf" = kf
+                         "mcmc_rank" = mcmc_rank
                          )
   return(return_objects)
 }
@@ -227,51 +190,52 @@ model_priors <- c(
 Restoring the saved objects
 ```{r}
 # Restore the saved object under a different name
-# brm_pd_disorder <- readRDS("envr/brm_pd_disorder_2020_16_11.rds")
-# brm_pd_task <- readRDS("envr/brm_pd_task_2020_15_11.rds")
-# brm_pd_task_no_by <- readRDS("envr/brm_pd_task_no_by_2020_15_11.rds")
+# brm_pd_disorder <- readRDS("envr/brm_pd_disorder_2020_17_11.rds")
+# brm_pd_task <- readRDS("envr/brm_pd_task_2020_17_11.rds")
+# brm_pd_language <- readRDS("envr/brm_pd_language_2020_17_11.rds")
 ```
 
+## ALL DATA
 Running the three models, divided by feature
 ```{r}
 # Pause duration
-brm_pd_disorder <- complete_brms(data = df, feature = "pause_duration", formula = f_disorder, priors = model_priors, criterion = T)
-saveRDS(brm_pd_disorder, "envr/brm_pd_disorder_2020_17_11.rds")
+brm_pd_disorder <- complete_brms(data = df, feature = "pause_duration", formula = f_disorder, priors = model_priors, loo_criterion = F)
+saveRDS(brm_pd_disorder, "envr/brm_pd_disorder_2020_18_11.rds")
 
-brm_pd_task <- complete_brms(data = df, feature = "pause_duration", formula = f_task, priors = model_priors, criterion = T)
-saveRDS(brm_pd_task, "envr/brm_pd_task_2020_17_11.rds")
+brm_pd_task <- complete_brms(data = df, feature = "pause_duration", formula = f_task, priors = model_priors, loo_criterion = F)
+saveRDS(brm_pd_task, "envr/brm_pd_task_2020_18_11.rds")
 
-brm_pd_language <- complete_brms(data = df, feature = "pause_duration", formula = f_language, priors = model_priors, criterion = T) # prob with german
-saveRDS(brm_pd_language, "envr/brm_pd_language_2020_17_11.rds")
+brm_pd_language <- complete_brms(data = df, feature = "pause_duration", formula = f_language, priors = model_priors, loo_criterion = F)
+saveRDS(brm_pd_language, "envr/brm_pd_language_2020_18_11.rds")
 
 
 # Pitch
-brm_p_disorder <- complete_brms(data = df, feature = "pitch", formula = f_disorder, priors = model_priors, criterion = T)
-saveRDS(brm_p_disorder, "envr/brm_p_disorder_2020_17_11.rds")
+brm_p_disorder <- complete_brms(data = df, feature = "pitch", formula = f_disorder, priors = model_priors, loo_criterion = F)
+saveRDS(brm_p_disorder, "envr/brm_p_disorder_2020_18_11.rds")
 
-brm_p_task <- complete_brms(data = df, feature = "pitch", formula = f_task, priors = model_priors, criterion = T)
-saveRDS(brm_p_task, "envr/brm_p_task_2020_17_11.rds")
+brm_p_task <- complete_brms(data = df, feature = "pitch", formula = f_task, priors = model_priors, loo_criterion = F)
+saveRDS(brm_p_task, "envr/brm_p_task_2020_20_11.rds")
 
-brm_p_language <- complete_brms(data = df, feature = "pitch", formula = f_language, priors = model_priors, criterion = T)
-saveRDS(brm_p_language, "envr/brm_p_language_2020_17_11.rds")
+brm_p_language <- complete_brms(data = df, feature = "pitch", formula = f_language, priors = model_priors, loo_criterion = F)
+saveRDS(brm_p_language, "envr/brm_p_language_2020_18_11.rds")
 
 
 # Pitch variability
-brm_pv_disorder <- complete_brms(data = df, feature = "pitch_variability", formula = f_disorder, priors = model_priors, criterion = T)
-saveRDS(brm_pv_disorder, "envr/brm_pv_disorder_2020_17_11.rds")
+brm_pv_disorder <- complete_brms(data = df, feature = "pitch_variability", formula = f_disorder, priors = model_priors, loo_criterion = F)
+saveRDS(brm_pv_disorder, "envr/brm_pv_disorder_2020_18_11.rds")
 
-brm_pv_task <- complete_brms(data = df, feature = "pitch_variability", formula = f_task, priors = model_priors, criterion = T)
-saveRDS(brm_pv_task, "envr/brm_pv_task_2020_17_11.rds")
+brm_pv_task <- complete_brms(data = df, feature = "pitch_variability", formula = f_task, priors = model_priors, loo_criterion = F)
+saveRDS(brm_pv_task, "envr/brm_pv_task_2020_18_11.rds")
 
-brm_pv_language <- complete_brms(data = df, feature = "pitch_variability", formula = f_language, priors = model_priors, criterion = T)
-saveRDS(brm_pv_language, "envr/brm_pv_language_2020_17_11.rds")
+brm_pv_language <- complete_brms(data = df, feature = "pitch_variability", formula = f_language, priors = model_priors, loo_criterion = F)
+saveRDS(brm_pv_language, "envr/brm_pv_language_2020_18_11.rds")
 ```
 
-#Quality checking
+# Quality checking
 Pause duration
 ```{r}
 # brm_pd_disorder (~ 0 + disorder)
-brm_pd_disorder$posterior_summary #
+brm_pd_disorder$posterior_summary #Rhat = 1.00, ESS > 2200
 brm_pd_disorder$pp_checks
 
 brm_pd_disorder$mcmc_trace
@@ -299,7 +263,7 @@ plot(hypothesis(brm_pd_disorder$posterior_model, "nu = 0", class = ""))
 
 
 # brm_pd_task (~ 0 + disorder : task_type)
-brm_pd_task$posterior_summary #
+brm_pd_task$posterior_summary # Rhat = 1.00, ESS > 2200
 brm_pd_task$pp_checks
 
 brm_pd_task$mcmc_trace
@@ -321,16 +285,18 @@ plot(hypothesis(brm_pd_task$posterior_model, "Intercept:disorderlhd = 0", class 
 plot(hypothesis(brm_pd_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
 plot(hypothesis(brm_pd_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
 
-plot(hypothesis(brm_pd_task$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "expt_unique_dis"))
-plot(hypothesis(brm_pd_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "expt_unique_dis"))
-plot(hypothesis(brm_pd_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pd_task$posterior_model, "Intercept:dis_tasklhd_constrainedproduction = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pd_task$posterior_model, "Intercept:dis_taskrhd_constrainedproduction = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pd_task$posterior_model, "Intercept:dis_taskscz_constrainedproduction = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pd_task$posterior_model, "Intercept:dis_taskscz_freemonologicalproduction = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pd_task$posterior_model, "Intercept:dis_taskscz_socialinteraction = 0", class = "sd", group = "expt_unique_dis"))
 
 plot(hypothesis(brm_pd_task$posterior_model, "nu = 0", class = ""))
 
 
 
 # brm_pd_language (~ 0 + disorder : native_language)
-brm_pd_language$posterior_summary #
+brm_pd_language$posterior_summary # Rhat = 1.00, ESS > 2400
 brm_pd_language$pp_checks
 
 brm_pd_language$mcmc_trace
@@ -349,13 +315,19 @@ plot(hypothesis(brm_pd_language$posterior_model, "Intercept:disorderlhd = 0", cl
 plot(hypothesis(brm_pd_language$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
 plot(hypothesis(brm_pd_language$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
 
-plot(hypothesis(brm_pd_language$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "same_sample"))
-plot(hypothesis(brm_pd_language$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
-plot(hypothesis(brm_pd_language$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_language$posterior_model, "Intercept:dis_langlhd_English = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_language$posterior_model, "Intercept:dis_langlhd_Korean = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_language$posterior_model, "Intercept:dis_langrhd_English = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_language$posterior_model, "Intercept:dis_langrhd_Korean = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_language$posterior_model, "Intercept:dis_langscz_English = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pd_language$posterior_model, "Intercept:dis_langscz_German = 0", class = "sd", group = "same_sample"))
 
-plot(hypothesis(brm_pd_language$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "expt_unique_dis"))
-plot(hypothesis(brm_pd_language$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "expt_unique_dis"))
-plot(hypothesis(brm_pd_language$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pd_language$posterior_model, "Intercept:dis_langlhd_English = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pd_language$posterior_model, "Intercept:dis_langlhd_Korean = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pd_language$posterior_model, "Intercept:dis_langrhd_English = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pd_language$posterior_model, "Intercept:dis_langrhd_Korean = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pd_language$posterior_model, "Intercept:dis_langscz_English = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pd_language$posterior_model, "Intercept:dis_langscz_German = 0", class = "sd", group = "expt_unique_dis"))
 
 plot(hypothesis(brm_pd_language$posterior_model, "nu = 0", class = ""))
 ```
@@ -363,7 +335,7 @@ plot(hypothesis(brm_pd_language$posterior_model, "nu = 0", class = ""))
 Pitch
 ```{r}
 # brm_p_disorder (~ 0 + disorder)
-brm_p_disorder$posterior_summary #
+brm_p_disorder$posterior_summary # Rhat = 1.00, ESS > 1700
 brm_p_disorder$pp_checks
 
 brm_p_disorder$mcmc_trace
@@ -391,7 +363,7 @@ plot(hypothesis(brm_p_disorder$posterior_model, "nu = 0", class = ""))
 
 
 # brm_p_task (~ 0 + disorder : task_type)
-brm_p_task$posterior_summary #
+brm_p_task$posterior_summary # Rhat = 1.00, ESS > 1500
 brm_p_task$pp_checks
 
 brm_p_task$mcmc_trace
@@ -412,15 +384,16 @@ plot(hypothesis(brm_p_task$posterior_model, "Intercept:disorderasd = 0", class =
 plot(hypothesis(brm_p_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
 plot(hypothesis(brm_p_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
 
-plot(hypothesis(brm_p_task$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "expt_unique_dis"))
-plot(hypothesis(brm_p_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "expt_unique_dis"))
-plot(hypothesis(brm_p_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_p_task$posterior_model, "Intercept:dis_taskasd_freemonologicalproduction = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_p_task$posterior_model, "Intercept:dis_taskasd_socialinteraction = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_p_task$posterior_model, "Intercept:dis_taskrhd_constrainedproduction = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_p_task$posterior_model, "Intercept:dis_taskscz_constrainedproduction = 0", class = "sd", group = "expt_unique_dis"))
 
 plot(hypothesis(brm_p_task$posterior_model, "nu = 0", class = ""))
 
 
 # brm_pd_language ()
-brm_p_language$posterior_summary #
+brm_p_language$posterior_summary # Rhat = 1.00, ESS > 2100
 brm_p_language$pp_checks
 
 brm_p_language$mcmc_trace
@@ -438,13 +411,17 @@ plot(hypothesis(brm_p_language$posterior_model, "Intercept:disorderasd = 0", cla
 plot(hypothesis(brm_p_language$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
 plot(hypothesis(brm_p_language$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
 
-plot(hypothesis(brm_p_language$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "same_sample"))
-plot(hypothesis(brm_p_language$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
-plot(hypothesis(brm_p_language$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_p_language$posterior_model, "Intercept:dis_langasd_Danish = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_p_language$posterior_model, "Intercept:dis_langasd_English = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_p_language$posterior_model, "Intercept:dis_langasd_Portuguese = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_p_language$posterior_model, "Intercept:dis_langrhd_English = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_p_language$posterior_model, "Intercept:dis_langscz_English = 0", class = "sd", group = "same_sample"))
 
-plot(hypothesis(brm_p_language$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "expt_unique_dis"))
-plot(hypothesis(brm_p_language$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "expt_unique_dis"))
-plot(hypothesis(brm_p_language$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_p_language$posterior_model, "Intercept:dis_langasd_Danish = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_p_language$posterior_model, "Intercept:dis_langasd_English = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_p_language$posterior_model, "Intercept:dis_langasd_Portuguese = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_p_language$posterior_model, "Intercept:dis_langrhd_English = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_p_language$posterior_model, "Intercept:dis_langscz_English = 0", class = "sd", group = "expt_unique_dis"))
 
 plot(hypothesis(brm_p_language$posterior_model, "nu = 0", class = ""))
 ```
@@ -452,7 +429,7 @@ plot(hypothesis(brm_p_language$posterior_model, "nu = 0", class = ""))
 Pitch variability
 ```{r}
 # brm_pv_disorder (~ 0 + disorder)
-brm_pv_disorder$posterior_summary #
+brm_pv_disorder$posterior_summary # Rhat = 1.00, ESS > 1500
 brm_pv_disorder$pp_checks
 
 brm_pv_disorder$mcmc_trace
@@ -484,7 +461,7 @@ plot(hypothesis(brm_pv_disorder$posterior_model, "nu = 0", class = ""))
 
 
 # brm_pv_task (~ 0 + disorder : task_type)
-brm_pv_task$posterior_summary #
+brm_pv_task$posterior_summary # Rhat = 1.00, ESS > 1100
 brm_pv_task$pp_checks
 
 brm_pv_task$mcmc_trace
@@ -512,16 +489,21 @@ plot(hypothesis(brm_pv_task$posterior_model, "Intercept:disorderlhd = 0", class 
 plot(hypothesis(brm_pv_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
 plot(hypothesis(brm_pv_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
 
-plot(hypothesis(brm_pv_task$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "expt_unique_dis"))
-plot(hypothesis(brm_pv_task$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "expt_unique_dis"))
-plot(hypothesis(brm_pv_task$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "expt_unique_dis"))
-plot(hypothesis(brm_pv_task$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_task$posterior_model, "Intercept:dis_taskasd_constrainedproduction = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_task$posterior_model, "Intercept:dis_taskasd_freemonologicalproduction = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_task$posterior_model, "Intercept:dis_taskasd_socialinteraction = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_task$posterior_model, "Intercept:dis_tasklhd_constrainedproduction = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_task$posterior_model, "Intercept:dis_taskrhd_constrainedproduction = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_task$posterior_model, "Intercept:dis_taskrhd_freemonologicalproduction = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_task$posterior_model, "Intercept:dis_taskscz_constrainedproduction = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_task$posterior_model, "Intercept:dis_taskscz_freemonologicalproduction = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_task$posterior_model, "Intercept:dis_taskscz_socialinteraction = 0", class = "sd", group = "expt_unique_dis"))
 
 plot(hypothesis(brm_pv_task$posterior_model, "nu = 0", class = ""))
 
 
 # brm_pv_language ()
-brm_pv_language$posterior_summary #
+brm_pv_language$posterior_summary # Rhat = 1.00, ESS > 1700
 brm_pv_language$pp_checks
 
 brm_pv_language$mcmc_trace
@@ -546,19 +528,113 @@ plot(hypothesis(brm_pv_language$posterior_model, "Intercept:disorderlhd = 0", cl
 plot(hypothesis(brm_pv_language$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "study_disorder"))
 plot(hypothesis(brm_pv_language$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "study_disorder"))
 
-plot(hypothesis(brm_pv_language$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "same_sample"))
-plot(hypothesis(brm_pv_language$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "same_sample"))
-plot(hypothesis(brm_pv_language$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "same_sample"))
-plot(hypothesis(brm_pv_language$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langasd_Danish = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langasd_English = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langasd_Japanese = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langasd_Portuguese = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langlhd_English = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langlhd_Korean = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langrhd_English = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langrhd_Korean = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langrhd_Polish = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langrhd_Thai = 0", class = "sd", group = "same_sample"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langscz_English = 0", class = "sd", group = "same_sample"))
 
-plot(hypothesis(brm_pv_language$posterior_model, "Intercept:disorderasd = 0", class = "sd", group = "expt_unique_dis"))
-plot(hypothesis(brm_pv_language$posterior_model, "Intercept:disorderlhd = 0", class = "sd", group = "expt_unique_dis"))
-plot(hypothesis(brm_pv_language$posterior_model, "Intercept:disorderrhd = 0", class = "sd", group = "expt_unique_dis"))
-plot(hypothesis(brm_pv_language$posterior_model, "Intercept:disorderscz = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langasd_Danish = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langasd_English = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langasd_Japanese = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langasd_Portuguese = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langlhd_English = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langlhd_Korean = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langrhd_English = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langrhd_Korean = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langrhd_Polish = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langrhd_Thai = 0", class = "sd", group = "expt_unique_dis"))
+plot(hypothesis(brm_pv_language$posterior_model, "Intercept:dis_langscz_English = 0", class = "sd", group = "expt_unique_dis"))
 
 plot(hypothesis(brm_pv_language$posterior_model, "nu = 0", class = ""))
 ```
 
+
+Adding the loo criterion to all of the models above to see, where we have problematic observations, which cannot be refitted because of too little data (to be removed for the model comparison models)
+```{r}
+# Pause Duration
+brm_pd_disorder$posterior_model <- add_criterion(brm_pd_disorder$posterior_model, criterion = "loo", reloo = T, seed = TRUE) #fine
+brm_pd_task$posterior_model <- add_criterion(brm_pd_task$posterior_model, criterion = "loo", reloo = T, seed = TRUE) #fine
+brm_pd_language$posterior_model <- add_criterion(brm_pd_language$posterior_model, criterion = "loo", reloo = T, seed = TRUE) #fine
+
+# Pitch
+brm_p_disorder$posterior_model <- add_criterion(brm_p_disorder$posterior_model, criterion = "loo", reloo = T, seed = TRUE) #fine
+brm_p_task$posterior_model <- add_criterion(brm_p_task$posterior_model, criterion = "loo", reloo = T, seed = TRUE) # scz social interaction
+brm_p_language$posterior_model <- add_criterion(brm_p_language$posterior_model, criterion = "loo", reloo = T, seed = TRUE) # SPANISH is a new level, not found
+
+# Pitch variability
+brm_pv_disorder$posterior_model <- add_criterion(brm_pv_disorder$posterior_model, criterion = "loo", reloo = T, seed = TRUE)
+brm_pv_task$posterior_model <- add_criterion(brm_pv_task$posterior_model, criterion = "loo", reloo = T, seed = TRUE)
+brm_pv_language$posterior_model <- add_criterion(brm_pv_language$posterior_model, criterion = "loo", reloo = T, seed = TRUE)
+```
+
+
+## REDUCED/EDITED DATA for model comparisons
+Removing the data with problematic observations which could not be refitted because of lack of data
+```{r}
+# Pause Duration: No problem (reduced data is not needed)
+
+# Pitch: Removing observations with n = 1 in dis_task or dis_lang
+n_p_lang_df <- df %>% subset(feature == "pitch") %>% group_by(disorder, native_language) %>% summarize(n_lang = n(), .groups = "drop_last")
+n_p_task_df <- df %>% subset(feature == "pitch") %>% group_by(disorder, task_type) %>% summarize(n_task = n(), .groups = "drop_last")
+
+mc_p_df <- df %>% subset(feature == "pitch") %>%
+  merge(., n_p_lang_df, by = c("disorder", "native_language")) %>%
+  merge(., n_p_task_df, by = c("disorder", "task_type")) %>%
+  subset(n_lang != 1) %>% 
+  subset(n_task != 1)
+
+# Pitch Variability: Removing observations with n = 1 in dis_task or dis_lang
+n_pv_lang_df <- df %>% subset(feature == "pitch_variability") %>% group_by(disorder, native_language) %>% summarize(n_lang = n(), .groups = "drop_last")
+n_pv_task_df <- df %>% subset(feature == "pitch_variability") %>% group_by(disorder, task_type) %>% summarize(n_task = n(), .groups = "drop_last")
+
+mc_pv_df <- df %>% subset(feature == "pitch_variability") %>%
+  merge(., n_pv_lang_df, by = c("disorder", "native_language")) %>%
+  merge(., n_pv_task_df, by = c("disorder", "task_type")) %>%
+  subset(n_lang != 1) %>% 
+  subset(n_task != 1)
+```
+
+Running the three models for model comparison, divided by feature (reduced data)
+```{r}
+# Pause duration
+# mc_pd_disorder <- complete_brms(data = df, feature = "pause_duration", formula = f_disorder, priors = model_priors, loo_criterion = T)
+# saveRDS(mc_pd_disorder, "envr/mc_pd_disorder_2020_18_11.rds")
+# 
+# mc_pd_task <- complete_brms(data = df, feature = "pause_duration", formula = f_task, priors = model_priors, loo_criterion = T)
+# saveRDS(mc_pd_task, "envr/mc_pd_task_2020_18_11.rds")
+# 
+# mc_pd_language <- complete_brms(data = df, feature = "pause_duration", formula = f_language, priors = model_priors, loo_criterion = T)
+# saveRDS(mc_pd_language, "envr/mc_pd_language_2020_18_11.rds")
+
+
+# Pitch
+mc_p_disorder <- complete_brms(data = mc_p_df, feature = "pitch", formula = f_disorder, priors = model_priors, loo_criterion = T) #fine
+saveRDS(mc_p_disorder, "envr/mc_p_disorder_2020_20_11.rds")
+
+mc_p_task <- complete_brms(data = mc_p_df, feature = "pitch", formula = f_task, priors = model_priors, loo_criterion = T) #fine
+saveRDS(mc_p_task, "envr/mc_p_task_2020_20_11.rds")
+
+mc_p_language <- complete_brms(data = mc_p_df, feature = "pitch", formula = f_language, priors = model_priors, loo_criterion = T) #fine
+saveRDS(mc_p_language, "envr/mc_p_language_2020_20_11.rds")
+
+
+# Pitch variability
+mc_pv_disorder <- complete_brms(data = mc_pv_df, feature = "pitch_variability", formula = f_disorder, priors = model_priors, loo_criterion = T) #fine
+saveRDS(mc_pv_disorder, "envr/mc_pv_disorder_2020_20_11.rds")
+
+mc_pv_task <- complete_brms(data = mc_pv_df, feature = "pitch_variability", formula = f_task, priors = model_priors, loo_criterion = T)
+saveRDS(mc_pv_task, "envr/mc_pv_task_2020_20_11.rds")
+
+mc_pv_language <- complete_brms(data = mc_pv_df, feature = "pitch_variability", formula = f_language, priors = model_priors, loo_criterion = T)
+saveRDS(mc_pv_language, "envr/mc_pv_language_2020_20_11.rds")
+```
 
 # Model comparisons (both for pause duration, pitch, pitch variability)
 ```{r}
@@ -575,26 +651,26 @@ loo_model_weights(brm_pd_disorder$posterior_model, brm_pd_task$posterior_model, 
 
 
 # Pitch
-loo_compare(brm_p_disorder$posterior_model, brm_p_task$posterior_model)
-loo_compare(brm_p_disorder$posterior_model, brm_p_language$posterior_model)
+loo_compare(mc_p_disorder$posterior_model, mc_p_task$posterior_model)
+loo_compare(mc_p_disorder$posterior_model, mc_p_language$posterior_model)
 
-loo_compare(brm_p_disorder$posterior_model, brm_p_task$posterior_model, brm_p_language$posterior_model)
+loo_compare(mc_p_disorder$posterior_model, mc_p_task$posterior_model, mc_p_language$posterior_model)
 
-loo_model_weights(brm_p_disorder$posterior_model, brm_p_task$posterior_model)
-loo_model_weights(brm_p_disorder$posterior_model, brm_p_language$posterior_model)
+loo_model_weights(mc_p_disorder$posterior_model, mc_p_task$posterior_model)
+loo_model_weights(mc_p_disorder$posterior_model, mc_p_language$posterior_model)
 
-loo_model_weights(brm_p_disorder$posterior_model, brm_p_task$posterior_model, brm_p_language$posterior_model)
+loo_model_weights(mc_p_disorder$posterior_model, mc_p_task$posterior_model, mc_p_language$posterior_model)
 
 # Pitch variability
-loo_compare(brm_pv_disorder$posterior_model, brm_pv_task$posterior_model)
-loo_compare(brm_pv_disorder$posterior_model, brm_pv_language$posterior_model)
+loo_compare(mc_pv_disorder$posterior_model, mc_pv_task$posterior_model)
+loo_compare(mc_pv_disorder$posterior_model, mc_pv_language$posterior_model)
 
-loo_compare(brm_pv_disorder$posterior_model, brm_pv_task$posterior_model, brm_pv_language$posterior_model)
+loo_compare(mc_pv_disorder$posterior_model, mc_pv_task$posterior_model, mc_pv_language$posterior_model)
 
-loo_model_weights(brm_pv_disorder$posterior_model, brm_pv_task$posterior_model)
-loo_model_weights(brm_pv_disorder$posterior_model, brm_pv_language$posterior_model)
+loo_model_weights(mc_pv_disorder$posterior_model, mc_pv_task$posterior_model)
+loo_model_weights(mc_pv_disorder$posterior_model, mc_pv_language$posterior_model)
 
-loo_model_weights(brm_pv_disorder$posterior_model, brm_pv_task$posterior_model, brm_pv_language$posterior_model)
+loo_model_weights(mc_pv_disorder$posterior_model, mc_pv_task$posterior_model, mc_pv_language$posterior_model)
 ```
 
 
