@@ -28,37 +28,111 @@ rhd <- read_csv("rawdata/rhd_weed_2020.csv")
 Merging the data
 ```{r}
 # merging
-merge <- combine(scz, asd, lhd, rhd) 
+merge <- gdata::combine(scz, asd, lhd, rhd) 
 
 # re-oder columns and rename
-data <- merge[,c(64,1:63)] %>%
-  rename(disorder = source) %>%
+data <- merge[,c(65,1:64)] %>%
+  rename("disorder" = source) %>%
   mutate(same_sample =  paste0(same_sample, "_", disorder),
          mean_age_1_years = ifelse(disorder == "asd", mean_age_1/12, mean_age_1),
          mean_age_2_years = ifelse(disorder == "asd", mean_age_2/12, mean_age_2))
 
 ```
 
+Add some columns
+```{r}
+# remove empty column
+data$X1 <- NULL 
+
+# study disorder: because there are some studies which investigated 2 disorder (esp. rhd/lhd)
+data$study_disorder <- paste(data$study_ID, data$disorder, sep = "_")
+
+# grouped factors for disorder and expt-unique 
+data$dis_task <- paste(data$disorder, data$task_type, sep = "_")
+data$dis_lang <- paste(data$disorder, data$native_language, sep = "_")
+data$expt_unique_dis <- paste(data$expt_unique, data$disorder, sep = "_")
+
+```
+
+Save file
+```{r}
+
+write.csv(data, "data/finaldata_18_11_2020.csv")
+predata <- read_csv("data/finaldata_18_11_2020.csv") 
+
+```
+
+### SUMMARY STATISTICS FOR PAPER ###
+
 First look at the missing data: we have already taken out all of the NA's in x_1, x_2, SD_1 and SD_2
 Summary statistics: then count the participants and recordings by diagnosis, report their gender, age
 ```{r}
+# number of papers
+# total
+length(unique(data$short_cite))
+# by disorder
+n_papers <- data %>% group_by(short_cite) %>% 
+  summarise(dis = list(unique(as.character(disorder))), .groups = "drop_last") %>%
+  group_by(dis) %>%
+  summarise(n = n())
+
+# unique experiments 
+# total
+length(unique(data$expt_unique))
+# by disorder
+n_studies <- data %>% group_by(expt_unique) %>% 
+  summarise(dis = list(unique(as.character(disorder))), .groups = "drop_last") %>%
+  group_by(dis) %>%
+  summarise(n = n())
+
 # number of studies and unique experiments
 study_summary <- data %>% 
   group_by(disorder) %>% 
   summarise(n_studies = n_distinct(study_ID),
             n_unique_expt = n_distinct(expt_unique), 
             n_samples = n_distinct(same_sample),
+            n_row = n(),
             .groups = "drop_last")
+
+# languages
+levels(as.factor(predata$native_language))
+
+#
+
+
+test <- data %>% group_by(disorder, short_cite) %>%
+  summarise(n = n()) %>%
+  group_by(short_cite) %>%
+  summarise(n = n(), dis = list(disorder), dis2 = disorder)
 
 study_summary
 
 # calculate participant summary statistics
 # first make a data set that only has one row for unique samples
-distinct_sample <- distinct(data, same_sample, .keep_all = T)
+participant_sample <- data %>% group_by(same_sample, disorder) %>%
+  summarise(n_1 = as.integer(mean(n_1)),
+            n_2 = as.integer(mean(n_2))) 
+participant_sample$n_2[participant_sample$disorder == "lhd"] <- NA
+#total
+sum(participant_sample$n_1, na.rm = T) + sum(participant_sample$n_2, na.rm = T)  
+# by disorder
+participants <- participant_sample %>%
+  group_by(disorder) %>%
+  summarise(patient = sum(n_1),
+            control = sum(n_2, na.rm = T),
+            total = sum(n_1) + sum(n_2, na.rm = T), .groups = "drop_last")
+participants
+            
+          
+
+
+test2 <- filter(test, disorder == "rhd" | disorder == "lhd")
+View(test2)
+
 
 # then summarize
 sample_summary <- distinct_sample %>% 
-  group_by(disorder) %>% 
+  group_by(short_cite, disorder) %>% 
   summarise(n_unique_samples = n(),
             n_1 = sum(n_1),
             n_2 = sum(n_2),
@@ -76,31 +150,4 @@ sample_summary <- distinct_sample %>%
             .groups = "drop_last")
 
 sample_summary
-```
-
-Calculate effect size riccardo's way
-```{r}
-
-# Calculate standardized effect sizes, variance and standard errors
-
-DataPreprocessES <- function(d, feature = "pitch"){ #function(d,Name="pitch variability")
-  
-  # Calculate standardized effect sizes
-  d = escalc(
-    'SMD',
-    n1i = d$n_1, n2i = d$n_2,
-    m1i = d$x_1, m2i = d$x_2,
-    sd1i = d$SD_1, sd2i = d$SD_2,
-    data = d
-  )
-  
-  d$StandardError=summary(d)$sei
-  d = d %>% dplyr::rename(EffectSize=yi,Variance=vi)
-  
-  return(d)
-}
-
-data_calc <- DataPreprocessES(data)
-write.csv(data_calc, "data_calc_27_10_2020.csv")
-
 ```
