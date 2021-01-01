@@ -36,17 +36,17 @@ pacman::p_load(
 df <- read_csv("data/finaldata_18_11_2020.csv")
 df$X1 <- NULL
 
-# tests
-test <- df %>% subset(feature == "pitch_variability") %>% 
-  group_by(expt_unique_disorder, dis_task) %>%
-  summarise(n = n())
+# # tests
+# test <- df %>% subset(feature == "pitch_variability") %>% 
+#   group_by(expt_unique_disorder, dis_task) %>%
+#   summarise(n = n())
 
 ```
 
 Possible features
 ```{r}
 
-#possible features: at least 2 disorders with at least 4 studies
+#possible features: at least 3 disorders, where each has data from at least 5 studies
 features <- data %>%
   group_by(disorder, feature) %>%
   summarise(n_studies = n(), .groups = "drop_last") %>%
@@ -133,11 +133,6 @@ complete_brms <- function(data, feature, formula, priors, loo_criterion) {
   return(return_objects)
 }
 
-
-n_df <- df %>% subset(featuere == "pitch_variability") %>% group_by(disorder, native_language) %>% summarize(n = n(), .groups = "drop_last")
-mc_data <- df %>% subset(feature == "pitch_variability") %>%
-  merge(., n_df, by = c("disorder", "native_language")) %>%
-  subset(n != 1)
 ```
 
 Define Formulas and Priors
@@ -158,7 +153,7 @@ model_priors <- c(prior(normal(0, 2.5), class = b))
 
 ```
 
-Run Models with all data (for hypothesis testing and to find out which are problematic)
+Run Models with all data (for hypothesis testing and to find out which are problematic), and save them
 ```{r}
 
 # pause duration #
@@ -200,6 +195,10 @@ brm_pd_disorder$posterior_summary
 # mcmc_checks 
 brm_pd_disorder$mcmc_trace  
 brm_pd_disorder$mcmc_rank
+# pretty mcmcm for paper: 1100x350
+color_scheme_set("viridis")
+mcmc_trace(brm_pd_disorder$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
+mcmc_rank_overlay(brm_pd_disorder$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
 # pp_checks 
 brm_pd_disorder$pp_checks
 # b: absolute values (effect sizes)
@@ -228,11 +227,14 @@ brm_pd_task$posterior_summary
 # mcmc_checks 
 brm_pd_task$mcmc_trace  
 brm_pd_task$mcmc_rank
+# pretty mcmcm for paper in 1000x600
+color_scheme_set("viridis")
+mcmc_trace(brm_pd_task$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
+mcmc_rank_overlay(brm_pd_task$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
 # pp_checks 
 brm_pd_task$pp_checks
 # b
 plot(hypothesis(brm_pd_task$posterior_model,"disorderlhd:task_typeconstrainedproduction = 0"))
-plot(hypothesis(brm_pd_task_2$posterior_model,"disorderlhd:task_typeconstrainedproduction = 0"))
 plot(hypothesis(brm_pd_task$posterior_model,"disorderrhd:task_typeconstrainedproduction = 0"))
 plot(hypothesis(brm_pd_task$posterior_model,"disorderscz:task_typeconstrainedproduction = 0"))
 plot(hypothesis(brm_pd_task$posterior_model,"disorderscz:task_typefreemonologicalproduction = 0"))
@@ -261,6 +263,10 @@ brm_pd_lang$posterior_summary
 # mcmc_checks 
 brm_pd_lang$mcmc_trace  
 brm_pd_lang$mcmc_rank
+# pretty mcmcm for paper in 1400x500
+color_scheme_set("viridis")
+mcmc_trace(brm_pd_lang$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
+mcmc_rank_overlay(brm_pd_lang$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
 # pp_checks 
 brm_pd_lang$pp_checks
 # b
@@ -306,6 +312,10 @@ brm_pi_disorder$posterior_summary
 # mcmc_checks 
 brm_pi_disorder$mcmc_trace  
 brm_pi_disorder$mcmc_rank
+# pretty mcmcm for paper in 1000x600
+color_scheme_set("viridis")
+mcmc_trace(brm_pi_disorder$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
+mcmc_rank_overlay(brm_pi_disorder$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
 # pp_checks 
 brm_pi_disorder$pp_checks
 # b: absolute values (effect sizes)
@@ -334,6 +344,10 @@ brm_pi_task$posterior_summary
 # mcmc_checks 
 brm_pi_task$mcmc_trace  
 brm_pi_task$mcmc_rank
+# pretty mcmcm for paper in 1000x600
+color_scheme_set("viridis")
+mcmc_trace(brm_pi_task$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
+mcmc_rank_overlay(brm_pi_task$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
 # pp_checks 
 brm_pi_task$pp_checks
 # b
@@ -364,6 +378,10 @@ brm_pi_lang$posterior_summary
 # mcmc_checks 
 brm_pi_lang$mcmc_trace  
 brm_pi_lang$mcmc_rank
+# pretty mcmcm for paper in 1000x600
+color_scheme_set("viridis")
+mcmc_trace(brm_pi_lang$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
+mcmc_rank_overlay(brm_pi_lang$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
 # pp_checks 
 brm_pi_lang$pp_checks
 # b
@@ -405,6 +423,10 @@ brm_pv_disorder$posterior_summary
 # mcmc_checks 
 brm_pv_disorder$mcmc_trace  
 brm_pv_disorder$mcmc_rank
+# pretty mcmcm for paper in 1000x600
+color_scheme_set("viridis")
+mcmc_trace(brm_pv_disorder$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
+mcmc_rank_overlay(brm_pv_disorder$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
 # pp_checks 
 brm_pv_disorder$pp_checks
 # b: absolute values (effect sizes)
@@ -432,6 +454,10 @@ brm_pv_task$posterior_summary
 # mcmc_checks 
 brm_pv_task$mcmc_trace  
 brm_pv_task$mcmc_rank
+# pretty mcmcm for paper in 1000x600
+color_scheme_set("viridis")
+mcmc_trace(brm_pv_task$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
+mcmc_rank_overlay(brm_pv_task$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
 # pp_checks 
 brm_pv_task$pp_checks
 # betas
@@ -473,20 +499,24 @@ brm_pv_lang$posterior_summary
 # mcmc_checks 
 brm_pv_lang$mcmc_trace  
 brm_pv_lang$mcmc_rank
+# pretty mcmcm for paper in 1000x600
+color_scheme_set("viridis")
+mcmc_trace(brm_pv_lang$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
+mcmc_rank_overlay(brm_pv_lang$posterior_model, pars = vars(-contains("["), -contains("prior"), -contains("lp"), -contains("sigma"))) + theme_classic()
 # pp_checks 
 brm_pv_lang$pp_checks
 # betas
-plot(hypothesis(brm_pv_lang$posterior_model,"disorderasd:native_languageDanish = 0"))
 plot(hypothesis(brm_pv_lang$posterior_model,"disorderasd:native_languageEnglish = 0"))
+plot(hypothesis(brm_pv_lang$posterior_model,"disorderlhd:native_languageEnglish = 0"))
+plot(hypothesis(brm_pv_lang$posterior_model,"disorderrhd:native_languageEnglish = 0"))
+plot(hypothesis(brm_pv_lang$posterior_model,"disorderscz:native_languageEnglish = 0"))
+plot(hypothesis(brm_pv_lang$posterior_model,"disorderasd:native_languageDanish = 0"))
 plot(hypothesis(brm_pv_lang$posterior_model,"disorderasd:native_languageJapanese = 0"))
 plot(hypothesis(brm_pv_lang$posterior_model,"disorderasd:native_languagePortuguese = 0"))
-plot(hypothesis(brm_pv_lang$posterior_model,"disorderlhd:native_languageEnglish = 0"))
 plot(hypothesis(brm_pv_lang$posterior_model,"disorderlhd:native_languageKorean = 0"))
-plot(hypothesis(brm_pv_lang$posterior_model,"disorderrhd:native_languageEnglish = 0"))
 plot(hypothesis(brm_pv_lang$posterior_model,"disorderrhd:native_languageKorean = 0"))
 plot(hypothesis(brm_pv_lang$posterior_model,"disorderrhd:native_languagePolish = 0"))
 plot(hypothesis(brm_pv_lang$posterior_model,"disorderrhd:native_languageThai = 0"))
-plot(hypothesis(brm_pv_lang$posterior_model,"disorderscz:native_languageEnglish = 0"))
 # sd for same_sample
 plot(hypothesis(brm_pv_lang$posterior_model, "Intercept:dis_langasd_Danish = 0", class = "sd", group = "same_sample"))
 plot(hypothesis(brm_pv_lang$posterior_model, "Intercept:dis_langasd_English = 0", class = "sd", group = "same_sample"))
@@ -541,7 +571,7 @@ brm_pv_lang$posterior_model <- add_criterion(brm_pv_lang$posterior_model, criter
 
 ```
 
-Removing problematic observations
+Removing problematic observations for data for model comparison
 ```{r}
 
 # Pause Duration: No problem (reduced data is not needed)
@@ -572,7 +602,7 @@ mc_pv_df <- df %>% subset(feature == "pitch_variability") %>%
 Running the models for the model comparison (with the taken out data)
 ```{r}
 
-# pause duration 
+# pause duration: do not need to run it again (brm models above work)
 # mc_pd_disorder <- complete_brms(data = mc_df, feature = "pause_duration", formula = f_disorder, priors = model_priors, loo_criterion = T)
 # mc_pd_task <- complete_brms(data = mc_df, feature = "pause_duration", formula = f_task, priors = model_priors, loo_criterion = T) 
 # mc_pd_lang <- complete_brms(data = mc_df, feature = "pause_duration", formula = f_lang, priors = model_priors, loo_criterion = T)
@@ -662,27 +692,41 @@ pd_participants %>%
 # summary 
 brm_pd_disorder$posterior_summary
 
-# disorder #
-conditional_effects(brm_pd_disorder$posterior_model, "disorder")
-hypothesis(brm_pd_disorder$posterior_model, "disorderscz > disorderlhd") 
-hypothesis(brm_pd_disorder$posterior_model, "disorderscz > disorderrhd") 
-hypothesis(brm_pd_disorder$posterior_model, "disorderlhd > disorderrhd")
+## hypothesis testing: alpha = 0.025 for 95% CIs ##
 
-# task type #
+# overall ES in disorder model #
+hypothesis(brm_pd_disorder$posterior_model, "disorderrhd < 0", alpha = 0.025)
+hypothesis(brm_pd_disorder$posterior_model, "disorderlhd > 0", alpha = 0.025)
+hypothesis(brm_pd_disorder$posterior_model, "disorderscz > 0", alpha = 0.025)
+
+# comparison of ES in disorder model #
+conditional_effects(brm_pd_disorder$posterior_model, "disorder")
+hypothesis(brm_pd_disorder$posterior_model, "disorderscz > disorderlhd", alpha = 0.025) 
+hypothesis(brm_pd_disorder$posterior_model, "disorderscz > disorderrhd", alpha = 0.025) 
+hypothesis(brm_pd_disorder$posterior_model, "disorderlhd > disorderrhd", alpha = 0.025)
+
+# overall ES in task model #
+hypothesis(brm_pd_task$posterior_model, "disorderrhd:task_typeconstrainedproduction < 0", alpha = 0.025)
+hypothesis(brm_pd_task$posterior_model, "disorderlhd:task_typeconstrainedproduction > 0", alpha = 0.025)
+
+# comparison of ES in task type model #
 brm_pd_task$posterior_summary$fixed
 brm_pd_task_2$posterior_summary$fixed
 brm_pd_disorder$data %>% group_by(disorder, task_type) %>% summarise(n = n())
 parnames(brm_pd_task$posterior_model)
 conditional_effects(brm_pd_task$posterior_model, "disorder:task_type")
-hypothesis(brm_pd_task$posterior_model, "disorderlhd:task_typeconstrainedproduction > disorderrhd:task_typeconstrainedproduction") 
-hypothesis(brm_pd_task_2$posterior_model, "disorderlhd:task_typeconstrainedproduction > disorderrhd:task_typeconstrainedproduction")
+hypothesis(brm_pd_task$posterior_model, "disorderlhd:task_typeconstrainedproduction > disorderrhd:task_typeconstrainedproduction", alpha = 0.025) 
 
-# language #
+# overall ES in task model #
+hypothesis(brm_pd_lang$posterior_model, "disorderrhd:native_languageEnglish < 0", alpha = 0.025)
+hypothesis(brm_pd_lang$posterior_model, "disorderscz:native_languageEnglish > 0", alpha = 0.025)
+
+# comparison of ES in language model #
 brm_pd_lang$posterior_summary
 brm_pd_disorder$data %>% group_by(disorder, native_language) %>% summarise(n = n())
 parnames(brm_pd_lang$posterior_model)
 conditional_effects(brm_pd_lang$posterior_model, "disorder:native_language")
-hypothesis(brm_pd_lang$posterior_model, "disorderscz:native_languageEnglish > disorderrhd:native_languageEnglish")
+hypothesis(brm_pd_lang$posterior_model, "disorderscz:native_languageEnglish > disorderrhd:native_languageEnglish", alpha = 0.025)
 
 
 ```
@@ -713,24 +757,35 @@ pi_participants %>%
 # summary
 brm_pi_disorder$posterior_summary
 
-# disorder #
-conditional_effects(brm_pi_disorder$posterior_model, "disorder")
-hypothesis(brm_pi_disorder$posterior_model, "disorderrhd > disorderasd")
-hypothesis(brm_pi_disorder$posterior_model, "disorderrhd > disorderscz")
-hypothesis(brm_pi_disorder$posterior_model, "disorderasd > disorderscz")
+## hypothesis testing: alpha = 0.025 for 95% CIs ##
 
-# task type #
+# overall ES in the disorder model #
+hypothesis(brm_pi_disorder$posterior_model, "disorderrhd > 0", alpha = 0.025)
+hypothesis(brm_pi_disorder$posterior_model, "disorderasd > 0", alpha = 0.025)
+hypothesis(brm_pi_disorder$posterior_model, "disorderscz > 0", alpha = 0.025)
+
+# comparison of ES in disorder model #
+conditional_effects(brm_pi_disorder$posterior_model, "disorder")
+hypothesis(brm_pi_disorder$posterior_model, "disorderrhd > disorderasd", alpha = 0.025)
+hypothesis(brm_pi_disorder$posterior_model, "disorderrhd > disorderscz", alpha = 0.025)
+hypothesis(brm_pi_disorder$posterior_model, "disorderasd > disorderscz", alpha = 0.025)
+
+# task type model #
 brm_pi_disorder$data %>% group_by(disorder, task_type) %>% summarise(n = n())
 parnames(brm_pi_task$posterior_model)
 conditional_effects(brm_pi_task$posterior_model, "disorder:task_type")
 # NO TESTING POSSIBLE
 
-# language #
+# overall ES in the language model #
+hypothesis(brm_pi_lang$posterior_model, "disorderrhd:native_languageEnglish > 0", alpha = 0.025)
+hypothesis(brm_pi_lang$posterior_model, "disorderasd:native_languageEnglish > 0", alpha = 0.025)
+
+# comparison of ES in language model #
 brm_pi_lang$posterior_summary
 brm_pi_disorder$data %>% group_by(disorder, native_language) %>% summarise(n = n())
 parnames(brm_pi_lang$posterior_model)
 conditional_effects(brm_pi_lang$posterior_model, "disorder:native_language")
-hypothesis(brm_pi_lang$posterior_model, "disorderrhd:native_languageEnglish > disorderasd:native_languageEnglish")
+hypothesis(brm_pi_lang$posterior_model, "disorderrhd:native_languageEnglish > disorderasd:native_languageEnglish", alpha = 0.025)
 
 ```
 
@@ -747,8 +802,9 @@ length(unique(brm_pv_disorder$data$short_cite))
 pv_participants <- brm_pv_disorder$data %>% group_by(same_sample, disorder) %>%
   summarise(patients = head(n_1, 1),
             controls = head(n_2, 1))
+# either counting the lhd damage controls (or not)
 pv_participants$controls[pv_participants$disorder == "lhd"] <- NA
-#total
+# total
 sum(pv_participants$patients, na.rm = T) # 1214
 sum(pv_participants$controls, na.rm = T) # 941
 # by disorder
@@ -761,399 +817,54 @@ pv_participants %>%
 # summary
 brm_pv_disorder$posterior_summary
 
-# disorder #
+## hypothesis testing: alpha = 0.025 for 95% CIs ##
+
+# overall ES of disorder model #
+hypothesis(brm_pv_disorder$posterior_model, "disorderasd > 0", alpha = 0.025)
+hypothesis(brm_pv_disorder$posterior_model, "disorderrhd < 0", alpha = 0.025)
+hypothesis(brm_pv_disorder$posterior_model, "disorderlhd < 0", alpha = 0.025)
+hypothesis(brm_pv_disorder$posterior_model, "disorderscz < 0", alpha = 0.025)
+
+# comparison of ES in disorder model #
 brm_pv_disorder$posterior_summary
 conditional_effects(brm_pv_disorder$posterior_model, "disorder")
-hypothesis(brm_pv_disorder$posterior_model, "disorderasd > 0")
-hypothesis(brm_pv_disorder$posterior_model, "disorderasd > disorderrhd") 
-hypothesis(brm_pv_disorder$posterior_model, "disorderasd > disorderlhd") 
-hypothesis(brm_pv_disorder$posterior_model, "disorderasd > disorderscz") 
-hypothesis(brm_pv_disorder$posterior_model, "disorderrhd > disorderlhd") 
-hypothesis(brm_pv_disorder$posterior_model, "disorderrhd > disorderscz") 
-hypothesis(brm_pv_disorder$posterior_model, "disorderlhd > disorderscz")
+hypothesis(brm_pv_disorder$posterior_model, "disorderasd > disorderrhd", alpha = 0.025) 
+hypothesis(brm_pv_disorder$posterior_model, "disorderasd > disorderlhd", alpha = 0.025) 
+hypothesis(brm_pv_disorder$posterior_model, "disorderasd > disorderscz", alpha = 0.025) 
+hypothesis(brm_pv_disorder$posterior_model, "disorderrhd > disorderlhd", alpha = 0.025) 
+hypothesis(brm_pv_disorder$posterior_model, "disorderrhd > disorderscz", alpha = 0.025) 
+hypothesis(brm_pv_disorder$posterior_model, "disorderlhd > disorderscz", alpha = 0.025)
 
-# task type #
+# overall ES of task type model #
+hypothesis(brm_pv_task$posterior_model, "disorderrhd:task_typeconstrainedproduction < 0", alpha = 0.025)
+hypothesis(brm_pv_task$posterior_model, "disorderlhd:task_typeconstrainedproduction < 0", alpha = 0.025)
+hypothesis(brm_pv_task$posterior_model, "disorderasd:task_typefreemonologicalproduction > 0", alpha = 0.025)
+hypothesis(brm_pv_task$posterior_model, "disorderscz:task_typefreemonologicalproduction < 0", alpha = 0.025)
+
+# comparison of ES in task type model #
 brm_pv_task$posterior_summary
 brm_pv_disorder$data %>% group_by(disorder, task_type) %>% summarise(n = n())
 parnames(brm_pv_task$posterior_model)
 conditional_effects(brm_pv_task$posterior_model, "disorder:task_type")
-hypothesis(brm_pv_task$posterior_model, "disorderasd:task_typefreemonologicalproduction > disorderscz:task_typefreemonologicalproduction")
-hypothesis(brm_pv_task$posterior_model, "disorderrhd:task_typeconstrainedproduction > disorderlhd:task_typeconstrainedproduction")
+hypothesis(brm_pv_task$posterior_model, "disorderrhd:task_typeconstrainedproduction > disorderlhd:task_typeconstrainedproduction", alpha = 0.025)
+hypothesis(brm_pv_task$posterior_model, "disorderasd:task_typefreemonologicalproduction > disorderscz:task_typefreemonologicalproduction", alpha = 0.025)
 
+# overall ES of language model #
+hypothesis(brm_pv_lang$posterior_model, "disorderasd:native_languageEnglish > 0", alpha = 0.025)
+hypothesis(brm_pv_lang$posterior_model, "disorderrhd:native_languageEnglish < 0", alpha = 0.025)
+hypothesis(brm_pv_lang$posterior_model, "disorderlhd:native_languageEnglish < 0", alpha = 0.025)
+hypothesis(brm_pv_lang$posterior_model, "disorderscz:native_languageEnglish < 0", alpha = 0.025)
 
-# language #
+# comparison of ES in language model #
 brm_pv_lang$posterior_summary
 brm_pv_disorder$data %>% group_by(disorder, native_language) %>% summarise(n = n())
 parnames(brm_pv_lang$posterior_model)
 conditional_effects(brm_pv_lang$posterior_model, "disorder:native_language")
-hypothesis(brm_pv_lang$posterior_model, "disorderasd:native_languageEnglish > disorderrhd:native_languageEnglish")
-hypothesis(brm_pv_lang$posterior_model, "disorderasd:native_languageEnglish > disorderlhd:native_languageEnglish")
-hypothesis(brm_pv_lang$posterior_model, "disorderasd:native_languageEnglish > disorderscz:native_languageEnglish") 
-hypothesis(brm_pv_lang$posterior_model, "disorderrhd:native_languageEnglish > disorderlhd:native_languageEnglish")
-hypothesis(brm_pv_lang$posterior_model, "disorderrhd:native_languageEnglish > disorderscz:native_languageEnglish")
-hypothesis(brm_pv_lang$posterior_model, "disorderlhd:native_languageEnglish > disorderscz:native_languageEnglish")
-
-```
-
-Visualisations/Plots for Paper
-### PAUSE DURATION ###
-```{r}
-
-### PAUSE DURATION ###
-
-get_variables(brm_pd_disorder$posterior_model)
-
-# get the effects for each study, and calculate their effect sizes by adding them to the intercept
-out_r_pd <- spread_draws(brm_pd_disorder$posterior_model, r_expt_unique_dis[expt_unique_dis, Intercept], 
-                      b_disorderlhd, b_disorderrhd, b_disorderscz) %>%
-          separate(expt_unique_dis, c("expt_unique", "disorder"), "_") %>%
-          mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique),
-                 disorder = toupper(disorder)) %>%
-          mutate(ES = ifelse(disorder == "RHD", (r_expt_unique_dis + b_disorderrhd),
-                      ifelse(disorder == "LHD", (r_expt_unique_dis + b_disorderlhd),
-                      ifelse(disorder == "SCZ", (r_expt_unique_dis + b_disorderscz), NA))))
-                 
-# get the overall meta-analytic effect sizes
-out_ma_pd <- spread_draws(brm_pd_disorder$posterior_model, b_disorderlhd, b_disorderrhd, b_disorderscz) %>% 
-  # make it long format
-  pivot_longer(cols = c("b_disorderrhd", "b_disorderlhd", "b_disorderscz"), names_to = "expt_unique_dis") %>%
-  # name the correct column ES (for merging)
-  rename(ES = value) %>%
-  # create separate column for expt_unique (b) and disorder
-  separate(expt_unique_dis, c("expt_unique", "disorder"), "_disorder") %>%
-  # create expt_unique column (for merging)
-  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", "Overall Estimated Effect Size"),
-         disorder = toupper(disorder))
-
-# combine study specific and overall MA ES
-out_all_pd <- bind_rows(out_r_pd, out_ma_pd) %>% 
-  ungroup() %>%
-  #add column for co
-  #mutate(bycolor = ifelse(expt_unique == "b", expt_unique_dis, disorder)) %>%
-  # bring them in the right order, so that the overall effeect size always comes 
-  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "LHD: Overall Estimated Effect Size", after = 5)) %>%
-  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "RHD: Overall Estimated Effect Size", after = 13)) %>%
-  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "SCZ: Overall Estimated Effect Size", after = Inf))
-
-
-# calculate summary stats
-out_all_sum_pd <- out_all_pd %>% group_by(expt_unique_dis, disorder, expt_unique) %>%
-      mean_qi(ES)
-
-# plot 1
-ggplot(out_all_sum_pd, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
-    # add distributions
-    geom_density_ridges(data = out_all_pd, aes(fill = disorder), scale = 1, col = NA, rel_min_height = 0.01) +
-    # add data points in black
-    # add diamond for MA-ES
-    geom_point() + 
-    geom_point(data=subset(out_all_sum_pd, expt_unique == "b"), colour = "black", shape=18, size=5) +
-    # add error bar
-    geom_errorbarh(aes(xmin = .lower, xmax = .upper), height=.1) +
-    # add text
-    geom_text(data = mutate_if(out_all_sum_pd, is.numeric, round, 2), colour = "black",
-            aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward") +
-    # y axis description  
-    ylab('Reference') + 
-    # reference line at 0
-    geom_vline(xintercept=0, color='black', linetype='dashed') +
-    theme(axis.text.y = element_text(face = c("bold", rep("plain", 9), "bold", rep("plain", 7), "bold", rep("plain", 5))))
-
-# plot 2: 4x10 as pdf
-ggplot(out_all_sum_pd, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
-    geom_point(aes(colour = disorder)) + 
-    geom_point(data=subset(out_all_sum_pd, expt_unique == "b"),aes(colour = disorder), shape=18, size=5) +
-    geom_errorbarh(aes(xmin = .lower, xmax = .upper, colour = disorder), height=.1) +
-    geom_text(data = mutate_if(out_all_sum_pd, is.numeric, round, 2), colour = "black",
-            aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward", size = 3) +
-    labs(x = "Effect Size (Hedge's g)", y = "Reference", title = "Pause Duration", colour = "Disorder") +
-    geom_vline(xintercept=0, color='black', linetype='dashed') +
-    scale_color_manual(values = c("#52854C", "#D16103", "#0072B2")) +
-    theme_bw() +
-    theme(axis.text.y = element_text(face = c("bold", rep("plain", 9), "bold", rep("plain", 7), "bold", rep("plain", 5))))
-
-```
-
-
-### PAUSE DURATION: TASK TYPE ###
-```{r}
-
-get_variables(brm_pd_task$posterior_model)
-
-# get the effects for each study, and calculate their effect sizes by adding them to the intercept
-pd_out_r_task_1 <- spread_draws(brm_pd_task$posterior_model, r_expt_unique_dis[expt_unique_dis, Intercept])
-pd_out_r_task_2 <- spread_draws(brm_pd_task$posterior_model, `b_.*`, regex = T)
-pd_out_r_task <- merge(out_r_pd_task_1, out_r_pd_task_2)
-unique(pd_out_r_task$expt_unique_dis)
-
-pd_task <- brm_pd_task$data %>% ungroup() %>% select(dis_task, expt_unique_dis, task_type)
-pd_task$expt_unique_dis <- pd_task$expt_unique_dis %>% str_replace_all("\\s", "\\.")
-unique(pd_task$expt_unique_dis)
-
-pd_out_r_task <- merge(pd_out_r_task, pd_task, by = "expt_unique_dis")
-
-pd_out_r_task <- pd_out_r_task %>%
-  separate(expt_unique_dis, c("expt_unique", "disorder"), "_") %>%
-  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique),
-         disorder = toupper(disorder)) %>%
-  mutate(ES = ifelse(dis_task == "scz_social interaction", (r_expt_unique + `b_disorderscz:task_typesocialinteraction`), 
-              ifelse(dis_task == "rhd_constrained production", (r_expt_unique + `b_disorderrhd:task_typeconstrainedproduction`),
-              ifelse(dis_task == "scz_constrained production", (r_expt_unique + `b_disorderscz:task_typeconstrainedproduction`),
-              ifelse(dis_task == "scz_free monological production", (r_expt_unique + `b_disorderscz:task_typefreemonologicalproduction`),
-              ifelse(dis_task == "lhd_constrained production", (r_expt_unique + `b_disorderlhd:task_typeconstrainedproduction`)))))))
-
-
-
-
-
-              
-                      
-
-
-                 
-# get the overall meta-analytic effect sizes
-out_ma_pd <- spread_draws(brm_pd_task$posterior_model, b_disorderlhd, b_disorderrhd, b_disorderscz) %>% 
-  # make it long format
-  pivot_longer(cols = c("b_disorderrhd", "b_disorderlhd", "b_disorderscz"), names_to = "expt_unique_dis") %>%
-  # name the correct column ES (for merging)
-  rename(ES = value) %>%
-  # create separate column for expt_unique (b) and disorder
-  separate(expt_unique_dis, c("expt_unique", "disorder"), "_disorder") %>%
-  # create expt_unique column (for merging)
-  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", "Overall Estimated Effect Size"),
-         disorder = toupper(disorder))
-
-# combine study specific and overall MA ES
-out_all_pd <- bind_rows(out_r_pd, out_ma_pd) %>% 
-  ungroup() %>%
-  #add column for co
-  #mutate(bycolor = ifelse(expt_unique == "b", expt_unique_dis, disorder)) %>%
-  # bring them in the right order, so that the overall effeect size always comes 
-  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "LHD: Overall Estimated Effect Size", after = 5)) %>%
-  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "RHD: Overall Estimated Effect Size", after = 13)) %>%
-  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "SCZ: Overall Estimated Effect Size", after = Inf))
-
-
-# calculate summary stats
-out_all_sum_pd <- out_all_pd %>% group_by(expt_unique_dis, disorder, expt_unique) %>%
-      mean_qi(ES)
-
-# plot 1
-ggplot(out_all_sum_pd, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
-    # add distributions
-    geom_density_ridges(data = out_all_pd, aes(fill = disorder), scale = 1, col = NA, rel_min_height = 0.01) +
-    # add data points in black
-    # add diamond for MA-ES
-    geom_point() + 
-    geom_point(data=subset(out_all_sum_pd, expt_unique == "b"), colour = "black", shape=18, size=5) +
-    # add error bar
-    geom_errorbarh(aes(xmin = .lower, xmax = .upper), height=.1) +
-    # add text
-    geom_text(data = mutate_if(out_all_sum_pd, is.numeric, round, 2), colour = "black",
-            aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward") +
-    # y axis description  
-    ylab('Reference') + 
-    # reference line at 0
-    geom_vline(xintercept=0, color='black', linetype='dashed') +
-    theme(axis.text.y = element_text(face = c("bold", rep("plain", 9), "bold", rep("plain", 7), "bold", rep("plain", 5))))
-
-# plot 2: 4x10 as pdf
-ggplot(out_all_sum_pd, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
-    geom_point(aes(colour = disorder)) + 
-    geom_point(data=subset(out_all_sum_pd, expt_unique == "b"),aes(colour = disorder), shape=18, size=5) +
-    geom_errorbarh(aes(xmin = .lower, xmax = .upper, colour = disorder), height=.1) +
-    geom_text(data = mutate_if(out_all_sum_pd, is.numeric, round, 2), colour = "black",
-            aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward", size = 3) +
-    labs(x = "Effect Size (Hedge's g)", y = "Reference", title = "Pause Duration", colour = "Disorder") +
-    geom_vline(xintercept=0, color='black', linetype='dashed') +
-    scale_color_manual(values = c("#52854C", "#D16103", "#0072B2")) +
-    theme_bw() +
-    theme(axis.text.y = element_text(face = c("bold", rep("plain", 9), "bold", rep("plain", 7), "bold", rep("plain", 5))))
-
-```
-
-### PITCH ###
-```{r}
-
-### PITCH ###
-
-get_variables(brm_pi_disorder$posterior_model)
-View(brm_pi_disorder$data)
-
-# get the effects for each study, and calculate their effect sizes by adding them to the intercept
-out_r_pi_1 <- gather_draws(brm_pi_disorder$posterior_model,`r_expt_unique_dis.*` , regex = T)
-out_r_pi_2 <- spread_draws(brm_pi_disorder$posterior_model, b_disorderasd, b_disorderrhd, b_disorderscz)
-out_r_pi <- merge(out_r_pi_1, out_r_pi_2)
-out_r_pi$.variable <- gsub("r_expt_unique_dis\\[|,Intercept\\]", "", out_r_pi$.variable)
-out_r_pi <- out_r_pi %>%
-  separate(.variable, c("expt_unique", "disorder"), "_") %>%
-  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique),
-         disorder = toupper(disorder)) %>%
-  mutate(ES = ifelse(disorder == "ASD", (.value + b_disorderasd),
-                      ifelse(disorder == "RHD", (.value + b_disorderrhd),
-                      ifelse(disorder == "SCZ", (.value + b_disorderscz), NA))))
-  
-# get the overall meta-analytic effect sizes
-out_ma_pi <- spread_draws(brm_pi_disorder$posterior_model, b_disorderasd, b_disorderrhd, b_disorderscz) %>% 
-  # make it long format
-  pivot_longer(cols = c("b_disorderasd", "b_disorderrhd", "b_disorderscz"), names_to = "expt_unique_dis") %>%
-  # name the correct column ES (for merging)
-  rename(ES = value) %>%
-  # create separate column for expt_unique (b) and disorder
-  separate(expt_unique_dis, c("expt_unique", "disorder"), "_disorder") %>%
-  # create expt_unique column (for merging)
-  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", "Overall Estimated Effect Size"),
-         disorder = toupper(disorder))
-
-# to know how to refactor
-out_r_pi %>% ungroup %>% group_by(disorder) %>%
-  summarise(length(unique(expt_unique)))
-
-# combine study specific and overall MA ES
-out_all_pi <- bind_rows(out_r_pi, out_ma_pi) %>% 
-  ungroup() %>%
-  #add column for co
-  #mutate(bycolor = ifelse(expt_unique == "b", expt_unique_dis, disorder)) %>%
-  # bring them in the right order, so that the overall effeect size always comes 
-  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "ASD: Overall Estimated Effect Size", after = 25)) %>%
-  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "RHD: Overall Estimated Effect Size", after = 36)) %>%
-  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "SCZ: Overall Estimated Effect Size", after = 42))
-
-
-# calculate summary stats
-out_all_sum_pi <- out_all_pi %>% group_by(expt_unique_dis, disorder, expt_unique) %>%
-      mean_qi(ES)
-
-# plot 1
-ggplot(out_all_sum_pi, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
-    # add distributions
-    geom_density_ridges(data = out_all_pi, aes(fill = disorder), col = NA, scale = 1) +
-    # add data points in black
-    # add diamond for MA-ES
-    geom_point() + 
-    geom_point(data=subset(out_all_sum_pi, expt_unique == "b"), colour = "black", shape=18, size=5) +
-    # add error bar
-    geom_errorbarh(aes(xmin = .lower, xmax = .upper), height=.1) +
-    # add text
-    geom_text(data = mutate_if(out_all_sum_pi, is.numeric, round, 2), colour = "black",
-            aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward") +
-    # y axis description    
-    labs(x = "Effect Size (Hedge's g)", y = "Reference") +
-    # reference line at 0
-    geom_vline(xintercept=0, color='black', linetype='dashed') +    
-    theme(axis.text.y = element_text(face = c("bold", rep("plain", 5), "bold", rep("plain", 10), "bold", rep("plain", 25))))
-
-# plot 2: 7x11 in pdf
-ggplot(out_all_sum_pi, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
-    geom_point(aes(colour = disorder)) + 
-    geom_point(data=subset(out_all_sum_pi, expt_unique == "b"), aes(colour = disorder), shape=18, size=5) +
-    geom_errorbarh(aes(xmin = .lower, xmax = .upper, colour = disorder), height=.1) +
-    geom_text(data = mutate_if(out_all_sum_pi, is.numeric, round, 2), colour = "black", 
-              aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward", size = 3) +
-    labs(x = "Effect Size (Hedge's g)", y = "Reference", title = "Pitch", colour = "Disorder") +
-    geom_vline(xintercept=0, color='black', linetype='dashed') +  
-    scale_color_manual(values = c("#E69F00", "#D16103", "#0072B2")) +
-    theme_bw() +
-    theme(axis.text.y = element_text(face = c("bold", rep("plain", 5), "bold", rep("plain", 10), "bold", rep("plain", 25))))
-
-```
-
-
-### PITCH VARIABILITY ###
-```{r}
-
-theme_classic()
-
-### PITCH VARIABILITY ###
-
-get_variables(brm_pv_disorder$posterior_model)
-View(brm_pv_disorder$data)
-
-# get the effects for each study, and calculate their effect sizes by adding them to the intercept
-out_r_pv_1 <- gather_draws(brm_pv_disorder$posterior_model,`r_expt_unique_dis.*` , regex = T)
-out_r_pv_2 <- spread_draws(brm_pv_disorder$posterior_model, b_disorderasd, b_disorderlhd, b_disorderrhd, b_disorderscz)
-out_r_pv <- merge(out_r_pv_1, out_r_pv_2)
-out_r_pv$.variable <- gsub("r_expt_unique_dis\\[|,Intercept\\]", "", out_r_pv$.variable)
-out_r_pv <- out_r_pv %>%
-  separate(.variable, c("expt_unique", "disorder"), "_") %>%
-  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique),
-         disorder = toupper(disorder)) %>%
-  mutate(ES = ifelse(disorder == "ASD", (.value + b_disorderasd),
-                      ifelse(disorder == "LHD", (.value + b_disorderlhd),
-                      ifelse(disorder == "RHD", (.value + b_disorderrhd),
-                      ifelse(disorder == "SCZ", (.value + b_disorderscz), NA)))))
-  
-# get the overall meta-analytic effect sizes
-out_ma_pv <- spread_draws(brm_pv_disorder$posterior_model, b_disorderasd, b_disorderlhd, b_disorderrhd, b_disorderscz) %>% 
-  # make it long format
-  pivot_longer(cols = c("b_disorderasd", "b_disorderlhd", "b_disorderrhd", "b_disorderscz"), names_to = "expt_unique_dis") %>%
-  # name the correct column ES (for merging)
-  rename(ES = value) %>%
-  # create separate column for expt_unique (b) and disorder
-  separate(expt_unique_dis, c("expt_unique", "disorder"), "_disorder") %>%
-  # create expt_unique column (for merging)
-  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", "Overall Estimated Effect Size"),
-         disorder = toupper(disorder))
-
-# to know how to refactor
-out_r_pv %>% ungroup %>% group_by(disorder) %>%
-  summarise(length(unique(expt_unique)))
-
-# combine study specific and overall MA ES
-out_all_pv <- bind_rows(out_r_pv, out_ma_pv) %>% 
-  ungroup() %>%
-  #add column for co
-  #mutate(bycolor = ifelse(expt_unique == "b", expt_unique_dis, disorder)) %>%
-  # bring them in the right order, so that the overall effeect size always comes 
-  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "ASD: Overall Estimated Effect Size", after = 30)) %>%
-  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "LHD: Overall Estimated Effect Size", after = 44)) %>%
-  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "RHD: Overall Estimated Effect Size", after = 74)) %>%
-  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "SCZ: Overall Estimated Effect Size", after = 87))
-
-
-# calculate summary stats
-out_all_sum_pv <- out_all_pv %>% group_by(expt_unique_dis, disorder, expt_unique) %>%
-      mean_qi(ES)
-
-# plot 1
-ggplot(out_all_sum_pv, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
-    # add distributions
-    geom_density_ridges(data = out_all_pv, aes(fill = disorder), col = NA, scale = 1) +
-    # add data points in black
-    # add diamond for MA-ES
-    geom_point() + 
-    geom_point(data=subset(out_all_sum_pv, expt_unique == "b"), colour = "black", shape=18, size=5) +
-    # add error bar
-    geom_errorbarh(aes(xmin = .lower, xmax = .upper), height=.1) +
-    # add text
-    geom_text(data = mutate_if(out_all_sum_pv, is.numeric, round, 2), colour = "black",
-            aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward") +
-    # y axis description    
-    labs(x = "Effect Size (Hedge's g)", y = "Reference") +
-    # reference line at 0
-    geom_vline(xintercept=0, color='black', linetype='dashed') +    
-    theme(axis.text.y = element_text(face = c("bold", rep("plain", 12), "bold", rep("plain", 29), "bold", rep("plain", 13), "bold", rep("plain", 30))))
-
-# plot 2: 10x12 in pdf
-ggplot(out_all_sum_pv, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
-    # add distributions
-    #geom_density_ridges(data = out_all_pv, aes(fill = disorder), col = NA, scale = 1) +
-    # add data points in black
-    # add diamond for MA-ES
-    geom_point(aes(colour = disorder)) + 
-    geom_point(data=subset(out_all_sum_pv, expt_unique == "b"), aes(colour = disorder), shape=18, size=5) +
-    # add error bar
-    geom_errorbarh(aes(xmin = .lower, xmax = .upper, colour = disorder), height=.1) +
-    # add text
-    geom_text(data = mutate_if(out_all_sum_pv, is.numeric, round, 2), colour = "black",
-            aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward", size = 3) +
-    # y axis description    
-    labs(x = "Effect Size (Hedge's g)", y = "Reference", title = "Pitch Variability", colour = "Disorder") +
-    # reference line at 0
-    geom_vline(xintercept=0, color='black', linetype='dashed') +    
-    scale_color_manual(values = c("#E69F00", "#52854C", "#D16103", "#0072B2")) +
-    theme_bw() +
-    theme(axis.text.y = element_text(face = c("bold", rep("plain", 12), "bold", rep("plain", 29), "bold", rep("plain", 13), "bold", rep("plain", 30))))
-
+hypothesis(brm_pv_lang$posterior_model, "disorderasd:native_languageEnglish > disorderrhd:native_languageEnglish", alpha = 0.025)
+hypothesis(brm_pv_lang$posterior_model, "disorderasd:native_languageEnglish > disorderlhd:native_languageEnglish", alpha = 0.025)
+hypothesis(brm_pv_lang$posterior_model, "disorderasd:native_languageEnglish > disorderscz:native_languageEnglish", alpha = 0.025) 
+hypothesis(brm_pv_lang$posterior_model, "disorderrhd:native_languageEnglish > disorderlhd:native_languageEnglish", alpha = 0.025)
+hypothesis(brm_pv_lang$posterior_model, "disorderrhd:native_languageEnglish > disorderscz:native_languageEnglish", alpha = 0.025)
+hypothesis(brm_pv_lang$posterior_model, "disorderlhd:native_languageEnglish > disorderscz:native_languageEnglish", alpha = 0.025)
 
 ```

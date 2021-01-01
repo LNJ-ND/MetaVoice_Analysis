@@ -1,0 +1,690 @@
+---
+title: "plots"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load packages and models
+```{r}
+# packages
+library(pacman)
+pacman::p_load(
+  brms,
+  tidyverse,
+  bayesplot,
+  viridis, 
+  data.table,
+  ggplot2,
+  BayesCombo,
+  patchwork,
+  beepr,
+  graphics,
+  lmerTest,
+  loo,
+  rlist,
+  bayestestR,
+  tidybayes,
+  ggridges
+)
+
+# load models saved in environment, can be run in analysis.Rmd script
+# brm_pd_disorder <- readRDS("envr/brm_pd_disorder_2020_20_11.rds")
+# brm_pi_disorder <- readRDS("envr/brm_pi_disorder_2020_20_11.rds")
+# brm_pv_disorder <- readRDS("envr/brm_pv_disorder_2020_20_11.rds")
+
+# brm_pd_task <- readRDS("envr/brm_pd_task_2020_20_11.rds")
+# brm_pi_task <- readRDS("envr/brm_pi_task_2020_20_11.rds")
+# brm_pd_task <- readRDS("envr/brm_pv_task_2020_20_11.rds")
+
+# brm_pd_lang <- readRDS("envr/brm_pd_lang_2020_20_11.rds")
+# brm_pi_lang <- readRDS("envr/brm_pi_lang_2020_20_11.rds")
+# brm_pd_lang <- readRDS("envr/brm_pv_lang_2020_20_11.rds")
+
+# colors for forest plots
+# ASD: "#E69F00"
+# LHD: "#52854C"
+# RHD: "#D16103"
+# SCZ: "#0072B2"
+
+```
+
+## FOREST PLOTS
+
+### PAUSE DURATION
+```{r}
+
+get_variables(brm_pd_disorder$posterior_model)
+
+# get the effects for each study, and calculate their effect sizes by adding them to the intercept
+pd_studies <- spread_draws(brm_pd_disorder$posterior_model, 
+                         r_expt_unique_dis[expt_unique_dis, Intercept], 
+                         b_disorderlhd, 
+                         b_disorderrhd, 
+                         b_disorderscz) %>%
+  separate(expt_unique_dis, c("expt_unique", "disorder"), "_") %>%
+  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique), disorder = toupper(disorder)) %>%
+  mutate(ES = ifelse(disorder == "RHD", (r_expt_unique_dis + b_disorderrhd),
+              ifelse(disorder == "LHD", (r_expt_unique_dis + b_disorderlhd),
+              ifelse(disorder == "SCZ", (r_expt_unique_dis + b_disorderscz), NA))))
+                 
+# get the overall meta-analytic effect sizes, turn it into long format and make columns similar to the residuals
+pd_betas <- spread_draws(brm_pd_disorder$posterior_model, b_disorderlhd, b_disorderrhd, b_disorderscz) %>% 
+  pivot_longer(cols = c("b_disorderrhd", "b_disorderlhd", "b_disorderscz"), names_to = "expt_unique_dis") %>%
+  rename(ES = value) %>%
+  separate(expt_unique_dis, c("expt_unique", "disorder"), "_disorder") %>%
+  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", "Overall Estimated Effect Size"),
+         disorder = toupper(disorder))
+
+# info to know how to re-factor in next step
+pd_studies %>% ungroup %>% group_by(disorder) %>%
+  summarise(length(unique(expt_unique)))
+
+# combine study specific and overall MA ES, and factor them so that overall comes in the right place
+pd_all <- bind_rows(pd_studies, pd_betas) %>% 
+  ungroup() %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "LHD: Overall Estimated Effect Size", after = 5)) %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "RHD: Overall Estimated Effect Size", after = 13)) %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "SCZ: Overall Estimated Effect Size", after = Inf))
+
+# calculate summary stats
+pd_sum <- pd_all %>% group_by(expt_unique_dis, disorder, expt_unique) %>% mean_qi(ES)
+
+# plot: 800x400
+ggplot(pd_sum, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
+    geom_point(aes(colour = disorder)) + 
+    geom_point(data=subset(pd_sum, expt_unique == "b"),aes(colour = disorder), shape=18, size=5) +
+    geom_errorbarh(aes(xmin = .lower, xmax = .upper, colour = disorder), height=.3, size = 0.6) +
+    geom_text(data = mutate_if(pd_sum, is.numeric, round, 2), colour = "black",
+            aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward", size = 3.5) +
+    labs(x = "Effect Size (Hedge's g)", y = "Reference", title = "Pause Duration", colour = "Disorder") +
+    geom_vline(xintercept=0, color='black', linetype='dashed') +
+    scale_color_manual(values = c("#52854C", "#D16103", "#0072B2")) +
+    theme_bw() +
+    theme(axis.text.y = element_text(face = c("bold", rep("plain", 9), "bold", rep("plain", 7), "bold", rep("plain", 5))))
+
+```
+
+
+### PAUSE DURATION TASK TYPE
+```{r}
+
+get_variables(brm_pd_disorder$posterior_model)
+
+# get the residuals for each study
+pd_task_residuals <- spread_draws(brm_pd_task$posterior_model, r_expt_unique_dis[expt_unique_dis, Intercept],
+                              `b_disorderlhd:task_typeconstrainedproduction`,
+                              `b_disorderrhd:task_typeconstrainedproduction`) %>%
+  mutate(expt_unique_dis = gsub("..", ".", expt_unique_dis, fixed = T)) %>%
+  separate(expt_unique_dis, c("expt_unique", "disorder"), "_", remove = F) %>%
+  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique),
+         disorder = toupper(disorder))
+
+# get task type info from data
+pd_task_info <- brm_pd_task$data %>% ungroup() %>% select(dis_task, expt_unique_dis, task_type) %>%
+  mutate(expt_unique_dis = gsub(". ", " ", expt_unique_dis, fixed = T),
+         expt_unique_dis = gsub(" ", ".", expt_unique_dis, fixed = T)) %>%
+  separate(expt_unique_dis, c("expt_unique", "disorder"), "_", remove = F) %>%
+  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique),
+         disorder = toupper(disorder))
+
+# merge residuals and info together and calculate effect sizes
+pd_task_studies <- merge(pd_task_residuals, pd_task_info, by = c("expt_unique_dis", "disorder", "expt_unique")) %>%
+  mutate(ES = ifelse(dis_task == "lhd_constrained production", (r_expt_unique_dis + `b_disorderlhd:task_typeconstrainedproduction`),
+              ifelse(dis_task == "rhd_constrained production", (r_expt_unique_dis + `b_disorderrhd:task_typeconstrainedproduction`),
+              NA))) %>% filter(!is.na(ES))
+
+# get the overall meta-analytic effect sizes, make it long format and create columns similar to residuals data
+pd_task_betas <- spread_draws(brm_pd_task$posterior_model, 
+                        `b_disorderlhd:task_typeconstrainedproduction`,
+                        `b_disorderrhd:task_typeconstrainedproduction`) %>%
+  pivot_longer(cols = c("b_disorderlhd:task_typeconstrainedproduction", 
+                        "b_disorderrhd:task_typeconstrainedproduction"), names_to = "expt_unique_dis") %>%
+  rename(ES = value) %>%
+  separate(expt_unique_dis, c("expt_unique", "disorder"), "_disorder") %>%
+  mutate(disorder = toupper(gsub(":task_typeconstrainedproduction", "", disorder, fixed = T)),
+         expt_unique_dis = paste0(toupper(disorder), ": ", "Overall Estimated Effect Size"))
+
+# info to know how to re-factor in next step
+pd_task_studies %>% ungroup %>% group_by(disorder) %>%
+  summarise(length(unique(expt_unique)))
+
+# combine studies data and betas, and bring them in the right order
+pd_task_all <- bind_rows(pd_task_studies, pd_task_betas) %>% 
+  ungroup() %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "LHD: Overall Estimated Effect Size", after = 5)) %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "RHD: Overall Estimated Effect Size", after = 13))
+
+# calculate summary stats
+pd_task_sum <- pd_task_all %>% group_by(expt_unique_dis, disorder, expt_unique) %>% mean_qi(ES)
+
+# plot: 800x400
+ggplot(pd_task_sum, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
+    geom_point(aes(colour = disorder)) + 
+    geom_point(data=subset(pd_task_sum, expt_unique == "b"),aes(colour = disorder), shape=18, size=5) +
+    geom_errorbarh(aes(xmin = .lower, xmax = .upper, colour = disorder), height=.3, size = .6) +
+    geom_text(data = mutate_if(pd_task_sum, is.numeric, round, 2), colour = "black",
+            aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward", size = 3.5) +
+    labs(x = "Effect Size (Hedge's g)", y = "Reference", title = "Pause Duration: Constrained Production Task", colour = "Disorder") +
+    geom_vline(xintercept=0, color='black', linetype='dashed') +
+    scale_color_manual(values = c("#52854C", "#D16103")) +
+    theme_bw() +
+    theme(axis.text.y = element_text(face = c("bold", rep("plain", 7), "bold", rep("plain", 5))))
+
+```
+
+
+### PAUSE DURATION: LANGUAGE
+```{r}
+
+get_variables(brm_pd_lang$posterior_model)
+
+# get the residuals for each study
+pd_lang_residuals <- spread_draws(brm_pd_lang$posterior_model, 
+                               r_expt_unique_dis[expt_unique_dis, Intercept],
+                              `b_disorderrhd:native_languageEnglish`,
+                              `b_disorderscz:native_languageEnglish`) %>%
+  mutate(expt_unique_dis = gsub("..", ".", expt_unique_dis, fixed = T)) %>%
+  separate(expt_unique_dis, c("expt_unique", "disorder"), "_", remove = F) %>%
+  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique),
+        disorder = toupper(disorder))
+
+# get language info from data
+pd_lang_info <- brm_pd_lang$data %>% ungroup() %>% select(dis_lang, expt_unique_dis, native_language) %>%
+  mutate(expt_unique_dis = gsub(". ", " ", expt_unique_dis, fixed = T),
+         expt_unique_dis = gsub(" ", ".", expt_unique_dis, fixed = T)) %>%
+  separate(expt_unique_dis, c("expt_unique", "disorder"), "_", remove = F) %>%
+  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique),
+         disorder = toupper(disorder))
+
+# merge info and values together and calculate effect sizes
+pd_lang_studies <- merge(pd_lang_residuals, pd_lang_info, by = c("expt_unique_dis", "disorder", "expt_unique")) %>%
+  mutate(ES = ifelse(dis_lang == "rhd_English", (r_expt_unique_dis + `b_disorderrhd:native_languageEnglish`),
+              ifelse(dis_lang == "scz_English", (r_expt_unique_dis + `b_disorderscz:native_languageEnglish`),
+              NA))) %>% filter(!is.na(ES))
+
+# get the overall meta-analytic effect sizes, make it long format, create similar columns to studies data
+pd_lang_betas <- spread_draws(brm_pd_lang$posterior_model, 
+                              `b_disorderrhd:native_languageEnglish`,
+                              `b_disorderscz:native_languageEnglish`) %>%
+  pivot_longer(cols = c("b_disorderrhd:native_languageEnglish", 
+                        "b_disorderscz:native_languageEnglish"), names_to = "expt_unique_dis") %>%
+  rename(ES = value) %>%
+  separate(expt_unique_dis, c("expt_unique", "disorder"), "_disorder") %>%
+  mutate(disorder = toupper(gsub(":native_languageEnglish", "", disorder, fixed = T)),
+         expt_unique_dis = paste0(toupper(disorder), ": ", "Overall Estimated Effect Size"))
+
+# info to know how to re-factor in next step
+pd_lang_studies %>% ungroup %>% group_by(disorder) %>%
+  summarise(length(unique(expt_unique)))
+
+# combine study specific and overall MA ES
+pd_lang_all <- bind_rows(pd_lang_studies, pd_lang_betas) %>% 
+  ungroup() %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "RHD: Overall Estimated Effect Size", after = 5)) %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "SCZ: Overall Estimated Effect Size", after = Inf))
+
+# calculate summary stats
+pd_lang_sum <- pd_lang_all %>% group_by(expt_unique_dis, disorder, expt_unique) %>% mean_qi(ES)
+
+# plot: 800x400
+ggplot(pd_lang_sum, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
+    geom_point(aes(colour = disorder)) + 
+    geom_point(data=subset(pd_lang_sum, expt_unique == "b"),aes(colour = disorder), shape=18, size=5) +
+    geom_errorbarh(aes(xmin = .lower, xmax = .upper, colour = disorder), height=.3, size = .6) +
+    geom_text(data = mutate_if(pd_lang_sum, is.numeric, round, 2), colour = "black",
+            aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward", size = 3.5) +
+    labs(x = "Effect Size (Hedge's g)", y = "Reference", title = "Pause Duration: English", colour = "Disorder") +
+    geom_vline(xintercept=0, color='black', linetype='dashed') +
+    scale_color_manual(values = c("#D16103", "#0072B2")) +
+    theme_bw() +
+    theme(axis.text.y = element_text(face = c("bold", rep("plain", 7), "bold", rep("plain", 5))))
+
+```
+
+
+### PITCH
+```{r}
+
+get_variables(brm_pi_disorder$posterior_model)
+
+# get the effects for each study, and calculate their effect sizes by adding them to the intercept, 
+# use regex because the way as in pause duration does not work for this model
+pi_studies_1 <- gather_draws(brm_pi_disorder$posterior_model,`r_expt_unique_dis.*` , regex = T)
+pi_studies_2 <- spread_draws(brm_pi_disorder$posterior_model, b_disorderasd, b_disorderrhd, b_disorderscz)
+
+pi_studies <- merge(pi_studies_1, pi_studies_2) %>%
+  mutate(.variable = gsub("r_expt_unique_dis\\[|,Intercept\\]", "", .variable)) %>%
+  separate(.variable, c("expt_unique", "disorder"), "_") %>%
+  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique),
+         disorder = toupper(disorder), 
+         ES = ifelse(disorder == "ASD", (.value + b_disorderasd),
+              ifelse(disorder == "RHD", (.value + b_disorderrhd),
+              ifelse(disorder == "SCZ", (.value + b_disorderscz), NA))))
+  
+# get the overall meta-analytic effect sizes, make it long format and add similar columns as in studies data
+pi_betas <- spread_draws(brm_pi_disorder$posterior_model, b_disorderasd, b_disorderrhd, b_disorderscz) %>% 
+  pivot_longer(cols = c("b_disorderasd", "b_disorderrhd", "b_disorderscz"), names_to = "expt_unique_dis") %>%
+  rename(ES = value) %>%
+  separate(expt_unique_dis, c("expt_unique", "disorder"), "_disorder") %>%
+  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", "Overall Estimated Effect Size"),
+         disorder = toupper(disorder))
+
+# to know how to re-factor in next step
+pi_studies %>% ungroup %>% group_by(disorder) %>%
+  summarise(length(unique(expt_unique)))
+
+# combine study specific and overall MA ES
+pi_all <- bind_rows(pi_studies, pi_betas) %>% 
+  ungroup() %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "ASD: Overall Estimated Effect Size", after = 25)) %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "RHD: Overall Estimated Effect Size", after = 36)) %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "SCZ: Overall Estimated Effect Size", after = 42))
+
+# calculate summary stats
+pi_sum <- pi_all %>% group_by(expt_unique_dis, disorder, expt_unique) %>% mean_qi(ES)
+
+# plot: 800x600
+ggplot(pi_sum, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
+    geom_point(aes(colour = disorder)) + 
+    #geom_point(data=subset(pi_sum, expt_unique == "b"), aes(colour = disorder), shape=18, size=5) +
+    geom_errorbarh(aes(xmin = .lower, xmax = .upper, colour = disorder), height=.3, size = .6) +
+    geom_text(data = mutate_if(pi_sum, is.numeric, round, 2), colour = "black", 
+              aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward", size = 3) +
+    labs(x = "Effect Size (Hedge's g)", y = "Reference", title = "Pitch", colour = "Disorder") +
+    geom_vline(xintercept=0, color='black', linetype='dashed') +  
+    scale_color_manual(values = c("#E69F00", "#D16103", "#0072B2")) +
+    theme_bw() +
+    theme(axis.text.y = element_text(face = c("bold", rep("plain", 5), "bold", rep("plain", 10), "bold", rep("plain", 25))))
+
+```
+
+
+### PITCH LANGUAGE
+```{r}
+
+get_variables(brm_pi_lang$posterior_model)
+
+# get the effects for each study 
+# use regex because the way as in pause duration does not work for this model
+pi_lang_residuals_1 <- gather_draws(brm_pi_lang$posterior_model,`r_expt_unique_dis.*` , regex = T)
+pi_lang_residuals_2 <- spread_draws(brm_pi_lang$posterior_model, `b_disorderasd:native_languageEnglish`, `b_disorderrhd:native_languageEnglish`)
+
+pi_lang_resiudals <- merge(pi_lang_residuals_1, pi_lang_residuals_2) %>%
+  mutate(.variable = gsub("r_expt_unique_dis\\[|,Intercept\\]", "", .variable),
+         .variable = gsub("..(", ".(", .variable, fixed = TRUE)) %>%
+  separate(.variable, c("expt_unique", "disorder"), "_") %>%
+  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique),
+         disorder = toupper(disorder))
+
+# get language info from data
+pi_lang_info <- brm_pi_lang$data %>% ungroup() %>% select(dis_lang, expt_unique_dis, native_language) %>%
+  mutate(expt_unique_dis = gsub(". ", " ", expt_unique_dis, fixed = T),
+         expt_unique_dis = gsub(" ", ".", expt_unique_dis, fixed = T)) %>%
+  separate(expt_unique_dis, c("expt_unique", "disorder"), "_", remove = F) %>%
+  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique),
+         disorder = toupper(disorder))
+
+# merge language info and residuals and calculate their effect sizes
+pi_lang_studies <- merge(pi_lang_resiudals, pi_lang_info, by = c("expt_unique_dis", "disorder", "expt_unique")) %>%
+  mutate(ES = ifelse(dis_lang == "asd_English", (.value + `b_disorderasd:native_languageEnglish`),
+              ifelse(dis_lang == "rhd_English", (.value + `b_disorderrhd:native_languageEnglish`),
+              NA))) %>% filter(!is.na(ES))
+
+# get overall estimates, make it long format, and make similar columns to the studies data
+pi_lang_betas <- spread_draws(brm_pi_lang$posterior_model, 
+                               `b_disorderasd:native_languageEnglish`,
+                               `b_disorderrhd:native_languageEnglish`) %>%
+  pivot_longer(cols = c("b_disorderasd:native_languageEnglish", 
+                        "b_disorderrhd:native_languageEnglish"), names_to = "expt_unique_dis") %>%
+  rename(ES = value) %>%
+  separate(expt_unique_dis, c("expt_unique", "disorder"), "_disorder") %>%
+  mutate(disorder = toupper(gsub(":native_languageEnglish", "", disorder, fixed = T)),
+         expt_unique_dis = paste0(toupper(disorder), ": ", "Overall Estimated Effect Size"))
+
+# to know how to re-factor in next step
+pi_lang_studies %>% ungroup %>% group_by(disorder) %>%
+  summarise(length(unique(expt_unique)))
+
+# combine studies and betas
+pi_lang_all <- bind_rows(pi_lang_studies, pi_lang_betas) %>% 
+  ungroup() %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "ASD: Overall Estimated Effect Size", after = 14)) %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "RHD: Overall Estimated Effect Size", after = Inf))
+
+# calculate summary stats
+pi_lang_sum <- pi_lang_all %>% group_by(expt_unique_dis, disorder, expt_unique) %>% mean_qi(ES)
+
+# plot: 800x400
+ggplot(pi_lang_sum, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
+    geom_point(aes(colour = disorder)) + 
+    geom_point(data=subset(pi_lang_sum, expt_unique == "b"), aes(colour = disorder), shape=18, size=5) +
+    geom_errorbarh(aes(xmin = .lower, xmax = .upper, colour = disorder), height=.3, size = .6) +
+    geom_text(data = mutate_if(pi_lang_sum, is.numeric, round, 2), colour = "black", 
+              aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward", size = 3.5) +
+    labs(x = "Effect Size (Hedge's g)", y = "Reference", title = "Pitch: English", colour = "Disorder") +
+    geom_vline(xintercept=0, color='black', linetype='dashed') +  
+    scale_color_manual(values = c("#E69F00", "#D16103")) +
+    theme_bw() +
+    theme(axis.text.y = element_text(face = c("bold", rep("plain", 10), "bold", rep("plain", 14))))
+
+```
+
+
+### PITCH VARIABILITY
+```{r}
+
+get_variables(brm_pv_disorder$posterior_model)
+
+# get the effects for each study, and calculate their effect sizes by adding them to the intercept
+# use regex because the easy thing does not work here
+pv_studies_1 <- gather_draws(brm_pv_disorder$posterior_model,`r_expt_unique_dis.*` , regex = T)
+pv_studies_2 <- spread_draws(brm_pv_disorder$posterior_model, b_disorderasd, b_disorderlhd, b_disorderrhd, b_disorderscz)
+
+pv_studies <- merge(pv_studies_1, pv_studies_2) %>%
+  mutate(.variable = gsub("r_expt_unique_dis\\[|,Intercept\\]", "", .variable)) %>%
+  separate(.variable, c("expt_unique", "disorder"), "_") %>%
+  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique),
+         disorder = toupper(disorder),
+         ES = ifelse(disorder == "ASD", (.value + b_disorderasd),
+              ifelse(disorder == "LHD", (.value + b_disorderlhd),
+              ifelse(disorder == "RHD", (.value + b_disorderrhd),
+              ifelse(disorder == "SCZ", (.value + b_disorderscz), NA)))))
+  
+# get the overall meta-analytic effect sizes, make it long format and create similar columns as in data
+pv_betas <- spread_draws(brm_pv_disorder$posterior_model, b_disorderasd, b_disorderlhd, b_disorderrhd, b_disorderscz) %>% 
+  pivot_longer(cols = c("b_disorderasd", "b_disorderlhd", "b_disorderrhd", "b_disorderscz"), names_to = "expt_unique_dis") %>%
+  rename(ES = value) %>%
+  separate(expt_unique_dis, c("expt_unique", "disorder"), "_disorder") %>%
+  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", "Overall Estimated Effect Size"),
+         disorder = toupper(disorder))
+
+# to know how to re-factor in next step
+pv_studies %>% ungroup %>% group_by(disorder) %>%
+  summarise(length(unique(expt_unique)))
+
+# combine study specific and overall MA ES
+pv_all <- bind_rows(pv_studies, pv_betas) %>% 
+  ungroup() %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "ASD: Overall Estimated Effect Size", after = 30)) %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "LHD: Overall Estimated Effect Size", after = 44)) %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "RHD: Overall Estimated Effect Size", after = 74)) %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "SCZ: Overall Estimated Effect Size", after = 87))
+
+# calculate summary stats
+pv_sum <- pv_all %>% group_by(expt_unique_dis, disorder, expt_unique) %>% mean_qi(ES)
+
+# plot: 1000x700
+ggplot(pv_sum, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
+    geom_point(aes(colour = disorder)) + 
+    geom_point(data=subset(pv_sum, expt_unique == "b"), aes(colour = disorder), shape=18, size=5) +
+    geom_errorbarh(aes(xmin = .lower, xmax = .upper, colour = disorder), height=.3, size = .6) +
+    geom_text(data = mutate_if(pv_sum, is.numeric, round, 2), colour = "black",
+            aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward", size = 3) +
+    labs(x = "Effect Size (Hedge's g)", y = "Reference", title = "Pitch Variability", colour = "Disorder") +
+    geom_vline(xintercept=0, color='black', linetype='dashed') +    
+    scale_color_manual(values = c("#E69F00", "#52854C", "#D16103", "#0072B2")) +
+    theme_bw() +
+    theme(axis.text.y = element_text(face = c("bold", rep("plain", 12), "bold", rep("plain", 29), "bold", rep("plain", 13), "bold", rep("plain", 30))))
+
+```
+
+
+### PITCH VARIABILITY TASK TYPE
+```{r}
+
+# free monological asd scz
+# constrained rhd lhd
+get_variables(brm_pv_task$posterior_model)
+
+# get the values from the model
+pv_task_residuals_1 <- gather_draws(brm_pv_task$posterior_model,`r_expt_unique_dis.*` , regex = T)
+pv_task_residuals_2 <- spread_draws(brm_pv_task$posterior_model, 
+                                `b_disorderasd:task_typefreemonologicalproduction`, 
+                                `b_disorderscz:task_typefreemonologicalproduction`, 
+                                `b_disorderrhd:task_typeconstrainedproduction`,
+                                `b_disorderlhd:task_typeconstrainedproduction`)
+
+pv_task_residuals <- merge(pv_task_residuals_1, pv_task_residuals_2) %>%
+  mutate(.variable = gsub("r_expt_unique_dis\\[|,Intercept\\]", "", .variable),
+         .variable = gsub("..(", ".(", .variable, fixed = TRUE)) %>%
+  separate(.variable, c("expt_unique", "disorder"), "_") %>%
+  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique),
+         disorder = toupper(disorder))
+
+# get language info from data
+pv_task_info <- brm_pv_task$data %>% ungroup() %>% select(dis_task, expt_unique_dis, task_type) %>%
+  mutate(expt_unique_dis = gsub(". ", " ", expt_unique_dis, fixed = T),
+         expt_unique_dis = gsub(" ", ".", expt_unique_dis, fixed = T)) %>%
+  separate(expt_unique_dis, c("expt_unique", "disorder"), "_", remove = F) %>%
+  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique),
+         disorder = toupper(disorder))
+
+# merge language info and studies and calculate effect sizes
+pv_task_studies <- merge(pv_task_residuals, pv_task_info, by = c("expt_unique_dis", "disorder", "expt_unique")) %>%
+  mutate(ES = ifelse(dis_task == "asd_free monological production", (.value + `b_disorderasd:task_typefreemonologicalproduction`),
+              ifelse(dis_task == "scz_free monological production", (.value + `b_disorderscz:task_typefreemonologicalproduction`),
+              ifelse(dis_task == "rhd_constrained production", (.value + `b_disorderrhd:task_typeconstrainedproduction`),
+              ifelse(dis_task == "lhd_constrained production", (.value + `b_disorderlhd:task_typeconstrainedproduction`),
+              NA))))) %>% 
+  filter(!is.na(ES))
+
+# get overall estimates, long format and make similar columns to studies data
+pv_task_betas <- spread_draws(brm_pv_task$posterior_model, 
+                               `b_disorderasd:task_typefreemonologicalproduction`,
+                               `b_disorderscz:task_typefreemonologicalproduction`,
+                               `b_disorderrhd:task_typeconstrainedproduction`,
+                               `b_disorderlhd:task_typeconstrainedproduction`) %>%
+  pivot_longer(cols = c("b_disorderasd:task_typefreemonologicalproduction", 
+                        "b_disorderscz:task_typefreemonologicalproduction",
+                        "b_disorderrhd:task_typeconstrainedproduction",
+                        "b_disorderlhd:task_typeconstrainedproduction"), names_to = "expt_unique_dis") %>%
+  rename(ES = value) %>%
+  separate(expt_unique_dis, c("expt_unique", "disorder"), "_disorder") %>%
+  separate(disorder, c("disorder", "task_type"), ":task_type") %>%
+  mutate(task_type = ifelse(task_type == "freemonologicalproduction", "free monological production", "constrained production"),
+         disorder = toupper(disorder),
+         expt_unique_dis = paste0(toupper(disorder), ": ", "Overall Estimated Effect Size"))
+
+# free: merge studies and betas
+pv_task_free_all <- bind_rows(subset(pv_task_studies, task_type == "free monological production"),
+                         subset(pv_task_betas, task_type == "free monological production")) %>%
+  ungroup() %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "ASD: Overall Estimated Effect Size", after = 20)) %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "SCZ: Overall Estimated Effect Size", after = Inf))
+
+# constrained: merge studies and betas
+pv_task_cons_all <- bind_rows(subset(pv_task_studies, task_type == "constrained production"),
+                         subset(pv_task_betas, task_type == "constrained production")) %>%
+  ungroup() %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "LHD: Overall Estimated Effect Size", after = 12)) %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "RHD: Overall Estimated Effect Size", after = Inf))
+
+
+# free: calculate summary stats
+pv_task_free_sum <- pv_task_free_all %>% group_by(expt_unique_dis, disorder, expt_unique) %>% mean_qi(ES)
+
+# constrained: calculate summary stats
+pv_task_cons_sum <- pv_task_cons_all %>% group_by(expt_unique_dis, disorder, expt_unique) %>% mean_qi(ES)
+
+# free: plot 2: 900 x 500
+ggplot(pv_task_free_sum, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
+    geom_point(aes(colour = disorder)) + 
+    geom_point(data=subset(pv_task_free_sum, expt_unique == "b"), aes(colour = disorder), shape=18, size=5) +
+    geom_errorbarh(aes(xmin = .lower, xmax = .upper, colour = disorder), height=.3, size = .6) +
+    geom_text(data = mutate_if(pv_task_free_sum, is.numeric, round, 2), colour = "black", 
+              aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward", size = 3.5) +
+    labs(x = "Effect Size (Hedge's g)", y = "Reference", title = "Pitch Variability: Free Monological Production Task", colour = "Disorder") +
+    geom_vline(xintercept=0, color='black', linetype='dashed') +  
+    scale_color_manual(values = c("#E69F00", "#0072B2")) +
+    theme_bw() +
+    theme(axis.text.y = element_text(face = c("bold", rep("plain", 5), "bold", rep("plain", 20))))
+
+# constrained: plot 2: 900 x 600
+ggplot(pv_task_cons_sum, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
+    geom_point(aes(colour = disorder)) + 
+    geom_point(data=subset(pv_task_cons_sum, expt_unique == "b"), aes(colour = disorder), shape=18, size=5) +
+    geom_errorbarh(aes(xmin = .lower, xmax = .upper, colour = disorder), height=.3, size = .6) +
+    geom_text(data = mutate_if(pv_task_cons_sum, is.numeric, round, 2), colour = "black", 
+              aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward", size = 3.5) +
+    labs(x = "Effect Size (Hedge's g)", y = "Reference", title = "Pitch Variability: Constrained Production Task", colour = "Disorder") +
+    geom_vline(xintercept=0, color='black', linetype='dashed') +  
+    scale_color_manual(values = c("#52854C", "#D16103")) +
+    theme_bw() +
+    theme(axis.text.y = element_text(face = c("bold", rep("plain", 27), "bold", rep("plain", 12))))
+
+```
+
+
+### PITCH VARIABILITY LANGUAGE
+```{r}
+
+get_variables(brm_pv_lang$posterior_model)
+
+# get the values from the model
+pv_lang_residuals_1 <- gather_draws(brm_pv_lang$posterior_model,`r_expt_unique_dis.*` , regex = T)
+pv_lang_residuals_2 <- spread_draws(brm_pv_lang$posterior_model, 
+                                `b_disorderasd:native_languageEnglish`, 
+                                `b_disorderlhd:native_languageEnglish`, 
+                                `b_disorderrhd:native_languageEnglish`, 
+                                `b_disorderscz:native_languageEnglish`)
+
+pv_lang_residuals <- merge(pv_lang_residuals_1, pv_lang_residuals_2) %>%
+  mutate(.variable = gsub("r_expt_unique_dis\\[|,Intercept\\]", "", .variable),
+         .variable = gsub("..(", ".(", .variable, fixed = TRUE)) %>%
+  separate(.variable, c("expt_unique", "disorder"), "_") %>%
+  mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique),
+         disorder = toupper(disorder))
+
+# get language info from data
+pv_lang_info <- brm_pv_lang$data %>% ungroup() %>% select(dis_lang, expt_unique_dis, native_language) %>%
+           mutate(expt_unique_dis = gsub(". ", " ", expt_unique_dis, fixed = T),
+                  expt_unique_dis = gsub(" ", ".", expt_unique_dis, fixed = T)) %>%
+           separate(expt_unique_dis, c("expt_unique", "disorder"), "_", remove = F) %>%
+           mutate(expt_unique_dis = paste0(toupper(disorder), ": ", expt_unique),
+                  disorder = toupper(disorder))
+
+# merge language info and estimates
+pv_lang_studies <- merge(pv_lang_residuals, pv_lang_info, by = c("expt_unique_dis", "disorder", "expt_unique")) %>%
+  mutate(ES = ifelse(dis_lang == "asd_English", (.value + `b_disorderasd:native_languageEnglish`),
+              ifelse(dis_lang == "lhd_English", (.value + `b_disorderlhd:native_languageEnglish`),
+              ifelse(dis_lang == "rhd_English", (.value + `b_disorderrhd:native_languageEnglish`),
+              ifelse(dis_lang == "scz_English", (.value + `b_disorderscz:native_languageEnglish`), NA))))) %>% 
+  filter(!is.na(ES))
+
+# get overall estimates, make it long format, and add columns similar to stdies
+pv_lang_betas <- spread_draws(brm_pv_lang$posterior_model, 
+                               `b_disorderasd:native_languageEnglish`,
+                               `b_disorderlhd:native_languageEnglish`,
+                               `b_disorderrhd:native_languageEnglish`,
+                               `b_disorderscz:native_languageEnglish`) %>%
+  pivot_longer(cols = c("b_disorderasd:native_languageEnglish", 
+                        "b_disorderlhd:native_languageEnglish",
+                        "b_disorderrhd:native_languageEnglish",
+                        "b_disorderscz:native_languageEnglish"), names_to = "expt_unique_dis") %>%
+  rename(ES = value) %>%
+  separate(expt_unique_dis, c("expt_unique", "disorder"), "_disorder") %>%
+  separate(disorder, c("disorder", "language"), ":native_language") %>%
+  mutate(disorder = toupper(disorder),
+         expt_unique_dis = paste0(toupper(disorder), ": ", "Overall Estimated Effect Size"))
+
+# to know how to ref-actor
+pv_lang_studies %>% ungroup %>% group_by(disorder) %>%
+  summarise(length(unique(expt_unique)))
+
+# combine studies and betas
+pv_lang_all <- bind_rows(pv_lang_studies, pv_lang_betas) %>% 
+  ungroup() %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "ASD: Overall Estimated Effect Size", after = 17)) %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "LHD: Overall Estimated Effect Size", after = 29)) %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "RHD: Overall Estimated Effect Size", after = 48)) %>%
+  mutate(expt_unique_dis = fct_relevel(expt_unique_dis, "SCZ: Overall Estimated Effect Size", after = Inf))
+
+# calculate summary stats
+pv_lang_sum <- pv_lang_all %>% group_by(expt_unique_dis, disorder, expt_unique) %>% mean_qi(ES)
+    
+# plot: 7x11 in pdf
+ggplot(pv_lang_sum, aes(y = reorder(expt_unique_dis, desc(expt_unique_dis)), x = ES)) + 
+    geom_point(aes(colour = disorder)) + 
+    geom_point(data=subset(pv_lang_sum, expt_unique == "b"), aes(colour = disorder), shape=18, size=5) +
+    geom_errorbarh(aes(xmin = .lower, xmax = .upper, colour = disorder), height=.3, size = .6) +
+    geom_text(data = mutate_if(pv_lang_sum, is.numeric, round, 2), colour = "black", 
+              aes(label = glue::glue("{ES} [{.lower}, {.upper}]"), x = Inf), hjust = "inward", size = 3.5) +
+    labs(x = "Effect Size (Hedge's g)", y = "Reference", title = "Pitch Variability: English", colour = "Disorder") +
+    geom_vline(xintercept=0, color='black', linetype='dashed') +  
+    scale_color_manual(values = c("#E69F00", "#52854C", "#D16103", "#0072B2")) +
+    theme_bw() +
+    theme(axis.text.y = element_text(face = c("bold", rep("plain", 11), "bold", rep("plain", 19), "bold", rep("plain", 11), "bold", rep("plain", 17))))
+
+```
+
+
+## FUNNEL PLOTS
+```{r}
+library(metafor)
+
+# ASD: "#E69F00"
+# LHD: "#52854C"
+# RHD: "#D16103"
+# SCZ: "#0072B2"
+
+### PAUSE DURATION ###
+# turn disorder into a factor
+brm_pd_disorder$data$disorder <- as.factor(brm_pd_disorder$data$disorder)
+
+# define forumla and run MA model
+rma_formula <- as.formula("g_calc ~ 0 + disorder")
+pd_metafor <- metafor::rma.mv(rma_formula, V = g_var_calc,
+                        random = ~ 1 | same_sample / study_disorder / expt_unique_dis,
+                        slab = disorder, data = brm_pd_disorder$data,
+                        method = "REML")
+
+# define colors for dots and plot them together with the funnel plot
+pd_metafor$slab #scz, lhd, rhd
+pd_colors <- c(rep("#0072B2", 9), rep("#52854C", 5), rep("#D16103", 7))
+pd_funnel <- funnel(pd_metafor)
+with(pd_funnel, points(x, y, col = pd_colors, pch = 19))
+
+
+### PITCH ###
+# turn disorder into a factor
+brm_pi_disorder$data$disorder <- as.factor(brm_pi_disorder$data$disorder)
+
+# define formula and run MA model
+rma_formula <- as.formula("g_calc ~ 0 + disorder")
+pi_metafor <- metafor::rma.mv(rma_formula, V = g_var_calc,
+                        random = ~ 1 | same_sample / study_disorder / expt_unique_dis,
+                        slab = disorder, data = brm_pi_disorder$data,
+                        method = "REML")
+
+# define colors for dots and plot them together with the funnel plot
+pi_metafor$slab
+#scz, asd, rhd
+pi_colors <- c(rep("#0072B2", 5), rep("#E69F00", 25), rep("#D16103", 10))
+pi_funnel <- funnel(pi_metafor)
+with(pi_funnel, points(x, y, col = pi_colors, pch = 19))
+
+
+### PITCH VARIABILITY ###
+# turn disorder into a factor
+brm_pv_disorder$data$disorder <- as.factor(brm_pv_disorder$data$disorder)
+
+# define formula and run MA model
+rma_formula <- as.formula("g_calc ~ 0 + disorder")
+pv_metafor <- metafor::rma.mv(rma_formula, V = g_var_calc,
+                        random = ~ 1 | same_sample / study_disorder / expt_unique_dis,
+                        slab = disorder, data = brm_pv_disorder$data,
+                        method = "REML")
+
+# define colors for dots and plot them together with the funnel plot
+pv_metafor$slab
+#scz, asd, lhd, rhd
+pv_colors <- c(rep("#0072B2", 12), rep("#E69F00", 30), rep("#52854C", 13), rep("#D16103", 29))
+pv_funnel <- funnel(pv_metafor)
+with(pv_funnel, points(x, y, col = pv_colors, pch = 19))
+
+```
